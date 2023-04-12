@@ -24,6 +24,7 @@ from utils.permissions import has_permission
 
 OPENPATH_LOGO = "https://www.nrel.gov/transportation/assets/images/openpath-logo.jpg"
 auth_type = os.getenv('AUTH_TYPE')
+url_path_prefix = os.getenv('PATH_PREFIX')
 
 
 if auth_type == 'cognito':
@@ -35,6 +36,7 @@ app = Dash(
     external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME],
     suppress_callback_exceptions=True,
     use_pages=True,
+    url_base_pathname=url_path_prefix
 )
 if auth_type == 'basic':
     auth = dash_auth.BasicAuth(
@@ -62,7 +64,7 @@ sidebar = html.Div(
                         html.I(className="fas fa-home me-2"), 
                         html.Span("Overview")
                     ],
-                    href="/",
+                    href=url_path_prefix,
                     active="exact",
                 ),
                 dbc.NavLink(
@@ -70,7 +72,7 @@ sidebar = html.Div(
                         html.I(className="fas fa-sharp fa-solid fa-database me-2"),
                         html.Span("Data"),
                     ],
-                    href="/data",
+                    href=url_path_prefix + "data",
                     active="exact",
                 ),
                 dbc.NavLink(
@@ -78,7 +80,7 @@ sidebar = html.Div(
                         html.I(className="fas fa-solid fa-right-to-bracket me-2"),
                         html.Span("Tokens"),
                     ],
-                    href="/tokens",
+                    href=url_path_prefix + "tokens",
                     active="exact",
                     style={'display': 'block' if has_permission('token_generate') else 'none'},
                 ),
@@ -87,7 +89,7 @@ sidebar = html.Div(
                         html.I(className="fas fa-solid fa-globe me-2"),
                         html.Span("Map"),
                     ],
-                    href="/map",
+                    href=url_path_prefix + "map",
                     active="exact",
                 ),
                 dbc.NavLink(
@@ -95,7 +97,7 @@ sidebar = html.Div(
                         html.I(className="fas fa-solid fa-envelope-open-text me-2"),
                         html.Span("Push notification"),
                     ],
-                    href="/push_notification",
+                    href=url_path_prefix + "push_notification",
                     active="exact",
                     style={'display': 'block' if has_permission('push_send') else 'none'},
                 ),
@@ -104,7 +106,7 @@ sidebar = html.Div(
                         html.I(className="fas fa-gear me-2"),
                         html.Span("Settings"),
                     ],
-                    href="/settings",
+                    href=url_path_prefix + "settings",
                     active="exact",
                 )
             ],
