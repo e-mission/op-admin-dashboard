@@ -7,6 +7,7 @@ import dash
 
 from config import CognitoConfig
 from utils import decode_jwt
+from utils.dash_utils import get_query_params
 
 
 def get_tokens(code):
@@ -44,14 +45,6 @@ def get_tokens(code):
     return data
 
 
-def get_query_params(url_params):
-    params = dict()
-    if url_params:
-        for key ,val in [item.split('=') for item in url_params[1:].split('&')]:
-            params[key] = val
-    return params
-
-
 def get_cognito_login_page(text='Welcome to the dashboard', color='black'):
     return [
         dbc.Row([
@@ -69,7 +62,7 @@ def get_cognito_login_page(text='Welcome to the dashboard', color='black'):
     ]
 
 
-def authenticate_user(params):
+def authenticate_user(url):
     all_cookies = dict(flask.request.cookies)
     if all_cookies.get('token') is not None:
         user_data = decode_jwt.lambda_handler(all_cookies['token'])
@@ -77,9 +70,9 @@ def authenticate_user(params):
             return True
 
     # If code is in query params, validate the user and set the token in cookies
-    query_params = get_query_params(params)
+    query_params = get_query_params(url)
     if 'code' in query_params:
-        user_data = get_tokens(query_params['code'])
+        user_data = get_tokens(query_params['code'][0])
         if user_data.get('id_token') is not None:
             dash.callback_context.response.set_cookie(
                 'token',

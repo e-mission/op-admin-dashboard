@@ -18,7 +18,7 @@ from dash import Input, Output, dcc, html, Dash
 import dash_auth
 
 from utils.db_utils import query_uuids, query_confirmed_trips
-from utils.permissions import has_permission
+from utils import perm_utils
 
 
 
@@ -82,7 +82,7 @@ sidebar = html.Div(
                     ],
                     href=url_path_prefix + "tokens",
                     active="exact",
-                    style={'display': 'block' if has_permission('token_generate') else 'none'},
+                    style={'display': 'block' if perm_utils.has_permission('token_generate') else 'none'},
                 ),
                 dbc.NavLink(
                     [
@@ -99,7 +99,7 @@ sidebar = html.Div(
                     ],
                     href=url_path_prefix + "push_notification",
                     active="exact",
-                    style={'display': 'block' if has_permission('push_send') else 'none'},
+                    style={'display': 'block' if perm_utils.has_permission('push_send') else 'none'},
                 ),
                 dbc.NavLink(
                     [
@@ -199,12 +199,12 @@ def update_store_trips(start_date, end_date):
 # Define the callback to display the page content based on the URL path
 @app.callback(
     Output('page-content', 'children'),
-    Input('url', 'search'),
+    Input('url', 'href'),
 )
-def display_page(search):
+def display_page(url):
     if auth_type == 'cognito':
         try:
-            is_authenticated = authenticate_user(search)
+            is_authenticated = authenticate_user(url)
         except Exception as e:
             print(e)
             return get_cognito_login_page('Unsuccessful authentication, try again.', 'red')

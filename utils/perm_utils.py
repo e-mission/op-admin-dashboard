@@ -4,13 +4,22 @@ import os
 import requests
 
 from utils.constants import valid_trip_columns, valid_uuids_columns
-
+from utils.dash_utils import get_study_name_from_url
 
 STUDY_NAME = os.getenv('STUDY_NAME')
 PATH = os.getenv('CONFIG_PATH')
 CONFIG_URL = PATH + STUDY_NAME + ".nrel-op.json"
 response = requests.get(CONFIG_URL)
 permissions = json.loads(response.text).get("admin_dashboard", {})
+
+
+def set_permissions(url):
+    global permissions
+    study_name = get_study_name_from_url(url)
+    path = os.getenv('CONFIG_PATH')
+    config_url = path + study_name + ".nrel-op.json"
+    response = requests.get(config_url)
+    permissions = json.loads(response.text).get("admin_dashboard", {})
 
 
 def has_permission(perm):

@@ -11,7 +11,7 @@ import emission.core.get_database as edb
 
 from utils.generate_qr_codes import saveAsQRCode
 from utils.generate_random_tokens import generateRandomTokensForProgram
-from utils.permissions import get_token_prefix, has_permission
+from utils.perm_utils import get_token_prefix, has_permission
 
 
 if has_permission('token_generate'):

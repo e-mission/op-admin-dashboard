@@ -12,7 +12,7 @@ import pandas as pd
 import emission.storage.decorations.user_queries as esdu
 import emission.core.wrapper.user as ecwu
 import emission.net.ext_service.push.notify_usage as pnu
-from utils.permissions import has_permission
+from utils.perm_utils import has_permission
 
 
 if has_permission('push_send'):

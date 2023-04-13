@@ -4,7 +4,7 @@ import pandas as pd
 
 import emission.core.get_database as edb
 
-from utils.permissions import get_trips_columns, get_additional_trip_columns
+from utils.perm_utils import get_trips_columns, get_additional_trip_columns
 
 
 def query_uuids(start_date, end_date):

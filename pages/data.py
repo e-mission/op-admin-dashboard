@@ -9,7 +9,7 @@ from dash import dcc, html, Input, Output, callback, register_page, dash_table
 import pandas as pd
 from dash.exceptions import PreventUpdate
 
-from utils.permissions import has_permission, get_uuids_columns, get_trips_columns, get_additional_trip_columns
+from utils.perm_utils import has_permission, get_uuids_columns, get_trips_columns, get_additional_trip_columns
 
 register_page(__name__, path="/data")
 
