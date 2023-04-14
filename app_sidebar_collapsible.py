@@ -24,7 +24,7 @@ from utils.permissions import has_permission
 
 OPENPATH_LOGO = "https://www.nrel.gov/transportation/assets/images/openpath-logo.jpg"
 auth_type = os.getenv('AUTH_TYPE')
-url_path_prefix = os.getenv('PATH_PREFIX', '/')
+url_path_prefix = os.getenv('PATH_PREFIX')
 
 
 if auth_type == 'cognito':
