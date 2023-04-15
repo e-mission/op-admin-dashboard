@@ -62,7 +62,7 @@ sidebar = html.Div(
                         html.I(className="fas fa-home me-2"), 
                         html.Span("Overview")
                     ],
-                    href="/",
+                    href=dash.get_relative_path("/"),
                     active="exact",
                 ),
                 dbc.NavLink(
@@ -70,7 +70,7 @@ sidebar = html.Div(
                         html.I(className="fas fa-sharp fa-solid fa-database me-2"),
                         html.Span("Data"),
                     ],
-                    href="/data",
+                    href=dash.get_relative_path("/data"),
                     active="exact",
                 ),
                 dbc.NavLink(
@@ -78,7 +78,7 @@ sidebar = html.Div(
                         html.I(className="fas fa-solid fa-right-to-bracket me-2"),
                         html.Span("Tokens"),
                     ],
-                    href="/tokens",
+                    href=dash.get_relative_path("/tokens"),
                     active="exact",
                     style={'display': 'block' if has_permission('token_generate') else 'none'},
                 ),
@@ -87,7 +87,7 @@ sidebar = html.Div(
                         html.I(className="fas fa-solid fa-globe me-2"),
                         html.Span("Map"),
                     ],
-                    href="/map",
+                    href=dash.get_relative_path("/map"),
                     active="exact",
                 ),
                 dbc.NavLink(
@@ -95,7 +95,7 @@ sidebar = html.Div(
                         html.I(className="fas fa-solid fa-envelope-open-text me-2"),
                         html.Span("Push notification"),
                     ],
-                    href="/push_notification",
+                    href=dash.get_relative_path("/push_notification"),
                     active="exact",
                     style={'display': 'block' if has_permission('push_send') else 'none'},
                 ),
@@ -104,7 +104,7 @@ sidebar = html.Div(
                         html.I(className="fas fa-gear me-2"),
                         html.Span("Settings"),
                     ],
-                    href="/settings",
+                    href=dash.get_relative_path("/settings"),
                     active="exact",
                 )
             ],
