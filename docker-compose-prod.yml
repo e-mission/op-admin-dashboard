@@ -17,6 +17,7 @@ services:
       CONFIG_PATH: "https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/configs/"
       STUDY_NAME: "stage-program"
       AUTH_TYPE: "basic" # the other option is cognito
+      REACT_VERSION: "18.2.0"
     networks:
        - emission
     deploy:
