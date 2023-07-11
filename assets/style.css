@@ -85,3 +85,29 @@
   width: 10px;
   height: 10px;
 }
+
+.token-input {
+  font-size: 14px;
+  width: 100%;
+  display: block;
+  margin: .5em;
+  padding: .1em .6em;
+  height: 30px;
+  vertical-align: top;
+  background-color: #b4dbf0;
+  overflow: hidden;
+  border-radius: .3em;
+}
+
+.token-button, .export {
+  font-size: 14px;
+  width: 140px;
+  display: block;
+  margin-bottom: 10px;
+  margin-right: 5px;
+  height: 40px;
+  vertical-align: top;
+  background-color: green;
+  color: white;
+  border-radius: .5em;
+}

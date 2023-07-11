@@ -27,25 +27,13 @@ layout = html.Div(
             dbc.Col(
                 [
                     html.Label('Program'),
-                    dcc.Input(value='program', id='token-program', type='text', required=True, style={
-                        'font-size': '14px', 'width': '100%', 'display': 'block', 'margin-bottom': '10px',
-                        'margin-right': '5px', 'height': '30px', 'verticalAlign': 'top', 'background-color': '#b4dbf0',
-                        'overflow': 'hidden',
-                    }),
+                    dcc.Input(value='program', id='token-program', type='text', required=True, className='token-input'),
 
                     html.Label('Token Length'),
-                    dcc.Input(value=5, id='token-length', type='number', min=3, max=100, required=True, style={
-                        'font-size': '14px', 'width': '100%', 'display': 'block', 'margin-bottom': '10px',
-                        'margin-right': '5px', 'height': '30px', 'verticalAlign': 'top', 'background-color': '#b4dbf0',
-                        'overflow': 'hidden',
-                    }),
+                    dcc.Input(value=5, id='token-length', type='number', min=3, max=100, required=True, className='token-input'),
 
                     html.Label('Number of Tokens'),
-                    dcc.Input(value=1, id='token-count', type='number', min=0, required=True, style={
-                        'font-size': '14px', 'width': '100%', 'display': 'block', 'margin-bottom': '10px',
-                        'margin-right': '5px', 'height': '30px', 'verticalAlign': 'top', 'background-color': '#b4dbf0',
-                        'overflow': 'hidden',
-                    }),
+                    dcc.Input(value=1, id='token-count', type='number', min=0, required=True, className='token-input'),
                 ],
                 xl=3,
                 lg=4,
@@ -70,11 +58,7 @@ layout = html.Div(
 
                     html.Br(),
                     html.Div([
-                        html.Button(children='Generate Tokens', id='token-generate', n_clicks=0, style={
-                            'font-size': '14px', 'width': '140px', 'display': 'block', 'margin-bottom': '10px',
-                            'margin-right': '5px', 'height':'40px', 'verticalAlign': 'top', 'background-color': 'green',
-                            'color': 'white',
-                        }),
+                        html.Button(children='Generate Tokens', id='token-generate', n_clicks=0, className='token-button'),
                         dcc.Download(id='download-token'),
                     ])
 
@@ -88,11 +72,7 @@ layout = html.Div(
         html.Div(id='token-table'),
 
         html.Br(),
-        html.Button(children='Export QR codes', id='token-export', n_clicks=0, style={
-            'font-size': '14px', 'width': '140px', 'display': 'block', 'margin-bottom': '10px',
-            'margin-right': '5px', 'height':'40px', 'verticalAlign': 'top', 'background-color': 'green',
-            'color': 'white',
-        }),
+        html.Button(children='Export QR codes', id='token-export', n_clicks=0, className='token-button'),
     ]
 )
 
