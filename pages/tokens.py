@@ -54,7 +54,7 @@ layout = html.Div(
             dbc.Col(
                 [
                     html.Label('Out Format'),
-                    dcc.Dropdown(options=['url safe', 'hex', 'base64'], value='url safe', id='token-format'),
+                    dcc.Dropdown(options=['urlsafe', 'hex'], value='urlsafe', id='token-format'),
 
                     html.Br(),
                     dcc.Checklist(
