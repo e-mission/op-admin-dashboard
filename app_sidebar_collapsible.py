@@ -84,6 +84,15 @@ sidebar = html.Div(
                 ),
                 dbc.NavLink(
                     [
+                        html.I(className="fas fa-solid fa-user me-2"),
+                        html.Span("User"),
+                    ],
+                    href=dash.get_relative_path("/user"),
+                    active="exact",
+                    style={'display': 'block' if has_permission('user_page') else 'none'},
+                ),
+                dbc.NavLink(
+                    [
                         html.I(className="fas fa-solid fa-right-to-bracket me-2"),
                         html.Span("Tokens"),
                     ],
