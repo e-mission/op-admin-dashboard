@@ -18,6 +18,10 @@ intro = """## User Details"""
 
 user_stats = {'token': 'token', 'user_id': 10, 'login_time': 15, 'total_trips': 20, 'labeled_trips': 10, 'platform': 'ios', 'first_trip': 'date', 'last_trip': 'date', 'last_call': 'data'}
 
+def get_user_tokens_options():
+    pass
+
+
 layout = html.Div(
     [
         dcc.Markdown(intro),
@@ -26,7 +30,9 @@ layout = html.Div(
             dbc.Col(
                 [
                     html.Label('User Token'),
-                    dcc.Dropdown(id='user-token-dropdown'),
+                    dcc.Dropdown(
+                        id='user-token-dropdown'
+                    ),
                 ],
                 style={
                     'display': 'block' if has_permission('options_emails') else 'none'
@@ -38,30 +44,33 @@ layout = html.Div(
         ]),
 
         dbc.Row([
-            dbc.Col(
-                dbc.Card(
-                    [
-                        dbc.CardHeader(
-                            html.H5(stat, className='user-card-title')
+            dbc.Col([
+                dbc.Row([
+                    dbc.Col(
+                        dbc.Card(
+                            [
+                                dbc.CardHeader(
+                                    html.H5(stat, className='user-card-title')
+                                ),
+                                dbc.CardBody(
+                                    html.H2(f'{value}',className='user-card-value'),
+                                    className='user-card-body'
+                                ),
+                            ],
+                            className='user-card',
+                            color='primary',
+                            inverse=True
                         ),
-                        dbc.CardBody(
-                            html.H2(f'{value}',className='user-card-value'),
-                            className='user-card-body'
-                        ),
-                    ],
-                    className='user-card',
-                    color='primary',
-                    inverse=True
+                        xl=4,
+                        sm=6
+                    ) for stat, value in user_stats.items()
+                ]),
+                dbc.Row(
+                    dcc.Graph(id="user-trip-map")
                 ),
-                width=2,
-            ) for stat, value in user_stats.items()
+            ], xl=8, lg=6),
+            dbc.Col([], width=6)
         ]),
-
-        dbc.Row(),
-
-        dbc.Row(
-            dcc.Graph(id="user-trip-map")
-        ),
     ]
 )
 
@@ -74,3 +83,6 @@ def update_output(user_token):
     if user_token is not None:
         user_id = str(ecwu.User.fromEmail(user_token).uuid)
         pass
+
+
+
