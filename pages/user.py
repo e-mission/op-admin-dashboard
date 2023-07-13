@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import random
 
 import emission.core.wrapper.user as ecwu
+import emission.storage.decorations.user_queries as esdu
 import emission.core.get_database as edb
 import logging
 
@@ -19,7 +20,8 @@ intro = """## User Details"""
 user_stats = {'token': 'token', 'user_id': 10, 'login_time': 15, 'total_trips': 20, 'labeled_trips': 10, 'platform': 'ios', 'first_trip': 'date', 'last_trip': 'date', 'last_call': 'data'}
 
 def get_user_tokens_options():
-    pass
+    uuid_list = esdu.get_all_uuids()
+    return [ecwu.User.fromUUID(uid)._User__email for uid in uuid_list]
 
 
 layout = html.Div(
@@ -31,7 +33,8 @@ layout = html.Div(
                 [
                     html.Label('User Token'),
                     dcc.Dropdown(
-                        id='user-token-dropdown'
+                        id='user-token-dropdown',
+                        options=get_user_tokens_options()
                     ),
                 ],
                 style={
