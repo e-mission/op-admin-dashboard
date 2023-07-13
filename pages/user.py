@@ -11,17 +11,39 @@ import emission.storage.decorations.user_queries as esdu
 import emission.core.get_database as edb
 import logging
 
+from utils.db_utils import add_user_stats
 from utils.permissions import has_permission
 
-register_page(__name__, path="/user")
 
+register_page(__name__, path="/user")
 intro = """## User Details"""
 
-user_stats = {'token': 'token', 'user_id': 10, 'login_time': 15, 'total_trips': 20, 'labeled_trips': 10, 'platform': 'ios', 'first_trip': 'date', 'last_trip': 'date', 'last_call': 'data'}
 
 def get_user_tokens_options():
     uuid_list = esdu.get_all_uuids()
-    return [ecwu.User.fromUUID(uid)._User__email for uid in uuid_list]
+    options = [ecwu.User.fromUUID(uid)._User__email for uid in uuid_list]
+    return options
+
+
+def create_stat_card(title, value):
+    card_layout = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardHeader(
+                    html.H5(title, className='user-card-title')
+                ),
+                dbc.CardBody(
+                    html.H2(f'{value}', className='user-card-value'),
+                    className='user-card-body'
+                ),
+            ],
+            className='user-card',
+            color='secondary',
+            inverse=True
+        ),
+        xl=4, sm=6
+    )
+    return card_layout
 
 
 layout = html.Div(
@@ -39,35 +61,13 @@ layout = html.Div(
                 ],
                 style={
                     'display': 'block' if has_permission('options_emails') else 'none'
-                },
-                xl=3,
-                lg=4,
-                sm=6,
+                }, xl=3, lg=4, sm=6
             )
         ]),
 
         dbc.Row([
             dbc.Col([
-                dbc.Row([
-                    dbc.Col(
-                        dbc.Card(
-                            [
-                                dbc.CardHeader(
-                                    html.H5(stat, className='user-card-title')
-                                ),
-                                dbc.CardBody(
-                                    html.H2(f'{value}',className='user-card-value'),
-                                    className='user-card-body'
-                                ),
-                            ],
-                            className='user-card',
-                            color='primary',
-                            inverse=True
-                        ),
-                        xl=4,
-                        sm=6
-                    ) for stat, value in user_stats.items()
-                ]),
+                dbc.Row(id='user-stats'),
                 dbc.Row(
                     dcc.Graph(id="user-trip-map")
                 ),
@@ -76,6 +76,25 @@ layout = html.Div(
         ]),
     ]
 )
+
+
+@callback(
+    Output('user-stats', 'children'),
+    Input('user-token-dropdown', 'value')
+)
+def update_user_stats(selected_user):
+    user_data = {}
+    if selected_user is not None:
+        logging.info(f"selected user is: {selected_user}")
+        user_data = add_user_stats([
+            {
+                'user_id': str(ecwu.User.fromEmail(selected_user).uuid),
+                'token': selected_user,
+            }
+        ])[0]
+
+    cards = [create_stat_card(title, value) for title, value in user_data.items()]
+    return cards
 
 
 @callback(

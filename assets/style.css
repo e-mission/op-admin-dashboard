@@ -90,24 +90,28 @@
 /* User page styles */
 .user-card {
     border-radius: 10px;
-    margin: 20px 0;
+    margin: 15px 0;
     text-align: center;
+    height: 16vh;
 }
 
 .user-card-title {
-    font-size: 20px;
+    font-size: 1.2em;
     font-weight: bold;
     color: white;
     margin-bottom: 10px;
 }
 
 .user-card-value {
-    font-size: 30px;
-    margin-bottom: 10px;
+    font-size: 1em;
     color: white;
 }
 
 .user-card-body {
-    background-color: #2eb4ac;
+    background-color: #2f8da0;
     border-radius: 0 0 10px 10px;
+}
+
+#user-stats > :first-child .user-card-value{
+    font-size: .7em;
 }
