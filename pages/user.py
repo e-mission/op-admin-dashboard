@@ -1,8 +1,8 @@
 import logging
 
+import pandas as pd
 from dash import dcc, html, Input, Output, dash_table, callback, register_page
 import dash_bootstrap_components as dbc
-import pandas as pd
 import plotly.graph_objects as go
 
 import emission.core.wrapper.user as ecwu
@@ -17,8 +17,7 @@ intro = """## User Details"""
 
 def group_trips_daily(trips_df):
     trips_df['end_ts'] = pd.to_datetime(trips_df['end_ts'], unit='s')
-    trips_df.set_index('end_ts', inplace=True)
-    grouped_df = trips_df.groupby(pd.Grouper(freq='D'))
+    grouped_df = trips_df.groupby(pd.Grouper(key='end_ts', freq='D'))
     return grouped_df
 
 
@@ -74,6 +73,36 @@ def create_trips_by_date_table(trips_df):
     return table
 
 
+def create_heatmap_fig(trips_df):
+    lat = list()
+    lon = list()
+    for item in trips_df['start_loc']:
+        lon.append(item['coordinates'][0])
+        lat.append(item['coordinates'][1])
+
+    for item in trips_df['end_loc']:
+        lon.append(item['coordinates'][0])
+        lat.append(item['coordinates'][1])
+    logging.info(lat)
+    logging.info(lon)
+    fig = go.Figure()
+    fig.add_trace(
+        go.Densitymapbox(
+            lon=lon,
+            lat=lat,
+        )
+    )
+    fig.update_layout(
+        mapbox_style='open-street-map',
+        mapbox_center_lon=lon[0],
+        mapbox_center_lat=lat[0],
+        mapbox_zoom=9,
+        margin={"r": 0, "t": 50, "l": 30, "b": 0},
+        height=500,
+    )
+    return fig
+
+
 layout = html.Div(
     [
         dcc.Markdown(intro),
@@ -96,9 +125,7 @@ layout = html.Div(
         dbc.Row([
             dbc.Col([
                 dbc.Row(id='user-stats'),
-                dbc.Row(
-                    dcc.Graph(id="user-trip-map")
-                ),
+                dbc.Row(id='user-trips-map-container'),
             ], xl=8, lg=6),
             dbc.Col(html.Div(id='user-table-container'), xl=4, lg=6)
         ]),
@@ -109,11 +136,13 @@ layout = html.Div(
 @callback(
     Output('user-stats', 'children'),
     Output('user-table-container', 'children'),
+    Output('user-trips-map-container', 'children'),
     Input('user-token-dropdown', 'value')
 )
 def update_user_stats(user_token):
     cards = list()
     trips_by_date_table = None
+    trips_map = None
     if user_token is not None:
         user_uuid = ecwu.User.fromEmail(user_token).uuid
         logging.info(f"selected user is: {user_token}")
@@ -129,20 +158,9 @@ def update_user_stats(user_token):
 
         trips_df = db_utils.get_trips_of_user(user_uuid)
         if len(trips_df) > 0:
-            logging.info(f"trips on {trips_df.columns}")
+            logging.info(f"trips columns: {trips_df.columns}")
             trips_by_date_table = create_trips_by_date_table(trips_df)
+            trips_fig = create_heatmap_fig(trips_df)
+            trips_map = dcc.Graph(id="user-trip-map", figure=trips_fig)
 
-    return cards, trips_by_date_table
-
-
-@callback(
-    Output('user-trip-map', 'figure'),
-    Input('user-token-dropdown', 'value'),
-)
-def update_output(user_token):
-    if user_token is not None:
-        user_id = str(ecwu.User.fromEmail(user_token).uuid)
-        pass
-
-
-
+    return cards, trips_by_date_table, trips_map
