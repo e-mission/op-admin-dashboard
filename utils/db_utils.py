@@ -10,6 +10,8 @@ import pymongo
 import emission.core.get_database as edb
 import emission.storage.timeseries.abstract_timeseries as esta
 import emission.storage.timeseries.timequery as estt
+import emission.storage.decorations.user_queries as esdu
+import emission.core.wrapper.user as ecwu
 
 from utils import constants
 from utils import permissions as perm_utils
@@ -159,3 +161,15 @@ def add_user_stats(user_data):
                 user['last_call'] = arrow.get(last_call).format(time_format)
 
     return user_data
+
+
+def get_trips_of_user(user_uuid):
+    ts = esta.TimeSeries.get_time_series(user_uuid)
+    trips_df = ts.get_data_df(key='analysis/confirmed_trip')
+    return trips_df
+
+
+def get_all_tokens():
+    uuid_list = esdu.get_all_uuids()
+    tokens_list = [ecwu.User.fromUUID(uid)._User__email for uid in uuid_list]
+    return tokens_list
