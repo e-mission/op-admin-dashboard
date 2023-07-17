@@ -93,7 +93,7 @@
     border-radius: 10px;
     margin: 15px 0;
     text-align: center;
-    height: 16vh;
+    height: 100px;
 }
 
 .user-card-title {
@@ -106,11 +106,17 @@
 .user-card-value {
     font-size: 1em;
     color: white;
+    margin: 0;
+}
+
+.user-card-header {
+    height: 40%;
 }
 
 .user-card-body {
     background-color: #2f8da0;
     border-radius: 0 0 10px 10px;
+    height: 60%;
 }
 
 #user-stats > :first-child .user-card-value{

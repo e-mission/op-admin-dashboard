@@ -26,7 +26,8 @@ def create_stats_card(title, value):
         dbc.Card(
             [
                 dbc.CardHeader(
-                    html.H5(title, className='user-card-title')
+                    html.H5(title, className='user-card-title'),
+                    className='user-card-header'
                 ),
                 dbc.CardBody(
                     html.H2(f'{value}', className='user-card-value'),
