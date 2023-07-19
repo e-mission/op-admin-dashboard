@@ -169,6 +169,12 @@ def get_trips_of_user(user_uuid):
     return trips_df
 
 
+def get_places_of_user(user_uuid):
+    ts = esta.TimeSeries.get_time_series(user_uuid)
+    places_df = ts.get_data_df(key='analysis/confirmed_place')
+    return places_df
+
+
 def get_all_tokens():
     uuid_list = esdu.get_all_uuids()
     tokens_list = [ecwu.User.fromUUID(uid)._User__email for uid in uuid_list]

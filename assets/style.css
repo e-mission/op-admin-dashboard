@@ -154,3 +154,7 @@
 #user-table tr:nth-child(odd) > td{
     background-color: #f9f9f9;
 }
+
+#user-trips, #user-places {
+    margin: 1em .3em;
+}

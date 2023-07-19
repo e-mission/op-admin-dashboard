@@ -43,6 +43,26 @@ def create_stats_card(title, value):
     return card_layout
 
 
+def create_table_base(table_data):
+    table = None
+    if table_data:
+        table_columns = [
+            {'name': col, 'id': col} for col in table_data[0].keys()
+        ]
+        table = dash_table.DataTable(
+            id='user-table',
+            columns=table_columns,
+            data=table_data,
+            style_data={
+                'whiteSpace': 'normal',
+                'height': 'auto',
+            },
+            page_size=12,
+        )
+
+    return table
+
+
 def create_trips_by_date_table(trips_df):
     grouped_trips = group_trips_daily(trips_df)
     table_data = list()
@@ -55,23 +75,20 @@ def create_trips_by_date_table(trips_df):
             'labeled_trips': labeled_trips,
         })
 
-    table = None
-    if table_data:
-        table_columns = [
-            {'name': col, 'id': col} for col in table_data[0].keys()
-        ]
-        table = dash_table.DataTable(
-            id='user-table',
-            columns=table_columns,
-            data=table_data,
-            style_data={
-                'whiteSpace': 'normal',
-                'height': 'auto'
-            },
-            page_size=20,
-        )
+    return create_table_base(table_data)
 
-    return table
+
+def create_places_table(places_df):
+    table_data = list()
+    for i, place in places_df.iterrows():
+        table_data.append({
+            'id': i + 1,
+            'duration': place['duration'],
+            'location': place['enter_local_dt_timezone'],
+            'added_activities': len(place['additions']),
+        })
+
+    return create_table_base(table_data)
 
 
 def create_heatmap_fig(trips_df):
@@ -84,8 +101,7 @@ def create_heatmap_fig(trips_df):
     for item in trips_df['end_loc']:
         lon.append(item['coordinates'][0])
         lat.append(item['coordinates'][1])
-    logging.info(lat)
-    logging.info(lon)
+
     fig = go.Figure()
     fig.add_trace(
         go.Densitymapbox(
@@ -124,25 +140,31 @@ layout = html.Div(
         ]),
 
         dbc.Row([
-            dbc.Col([
-                dbc.Row(id='user-stats'),
-                dbc.Row(id='user-trips-map-container'),
-            ], xl=8, lg=6),
-            dbc.Col(html.Div(id='user-table-container'), xl=4, lg=6)
+            dbc.Col(dbc.Row(id='user-stats'), xl=8, lg=6),
+            dbc.Col(html.Div(id='user-trips-by-date'), xl=4, lg=6),
         ]),
+
+        dbc.Row([
+            dbc.Col(html.Div(id='user-trips'), lg=6),
+            dbc.Col(html.Div(id='user-places'), lg=6),
+        ]),
+
+        dbc.Row(id='user-trips-map'),
     ]
 )
 
 
 @callback(
     Output('user-stats', 'children'),
-    Output('user-table-container', 'children'),
-    Output('user-trips-map-container', 'children'),
+    Output('user-trips-by-date', 'children'),
+    Output('user-places', 'children'),
+    Output('user-trips-map', 'children'),
     Input('user-token-dropdown', 'value')
 )
 def update_user_stats(user_token):
-    cards = list()
+    stat_cards = list()
     trips_by_date_table = None
+    places_table = None
     trips_map = None
     if user_token is not None:
         user_uuid = ecwu.User.fromEmail(user_token).uuid
@@ -153,7 +175,7 @@ def update_user_stats(user_token):
                 'token': user_token,
             }
         ])[0]
-        cards = [
+        stat_cards = [
             create_stats_card(title, val) for title, val in user_data.items()
         ]
 
@@ -164,4 +186,10 @@ def update_user_stats(user_token):
             trips_fig = create_heatmap_fig(trips_df)
             trips_map = dcc.Graph(id="user-trip-map", figure=trips_fig)
 
-    return cards, trips_by_date_table, trips_map
+
+        places_df = db_utils.get_places_of_user(user_uuid)
+        if len(places_df) > 0:
+            logging.info(f"places columns: {places_df.columns}")
+            places_table = create_places_table(places_df)
+
+    return stat_cards, trips_by_date_table, places_table, trips_map
