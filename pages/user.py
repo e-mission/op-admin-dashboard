@@ -78,6 +78,20 @@ def create_trips_by_date_table(trips_df):
     return create_table_base(table_data)
 
 
+def create_trips_table(trips_df):
+    table_data = list()
+    for i, trip in trips_df.iterrows():
+        table_data.append({
+            'id': i + 1,
+            'duration': trip['duration'],
+            'location': trip['start_local_dt_timezone'],
+            'added_activities': len(trip['additions']),
+            'has_details': 1 if trip['user_input'] else 0
+        })
+
+    return create_table_base(table_data)
+
+
 def create_places_table(places_df):
     table_data = list()
     for i, place in places_df.iterrows():
@@ -157,6 +171,7 @@ layout = html.Div(
 @callback(
     Output('user-stats', 'children'),
     Output('user-trips-by-date', 'children'),
+    Output('user-trips', 'children'),
     Output('user-places', 'children'),
     Output('user-trips-map', 'children'),
     Input('user-token-dropdown', 'value')
@@ -164,6 +179,7 @@ layout = html.Div(
 def update_user_stats(user_token):
     stat_cards = list()
     trips_by_date_table = None
+    trips_table = None
     places_table = None
     trips_map = None
     if user_token is not None:
@@ -183,6 +199,7 @@ def update_user_stats(user_token):
         if len(trips_df) > 0:
             logging.info(f"trips columns: {trips_df.columns}")
             trips_by_date_table = create_trips_by_date_table(trips_df)
+            trips_table = create_trips_table(trips_df)
             trips_fig = create_heatmap_fig(trips_df)
             trips_map = dcc.Graph(id="user-trip-map", figure=trips_fig)
 
@@ -192,4 +209,4 @@ def update_user_stats(user_token):
             logging.info(f"places columns: {places_df.columns}")
             places_table = create_places_table(places_df)
 
-    return stat_cards, trips_by_date_table, places_table, trips_map
+    return stat_cards, trips_by_date_table, trips_table, places_table, trips_map
