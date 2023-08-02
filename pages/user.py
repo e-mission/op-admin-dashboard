@@ -15,9 +15,9 @@ register_page(__name__, path="/user")
 intro = """## User Details"""
 
 
-def group_trips_daily(trips_df):
-    trips_df['end_ts'] = pd.to_datetime(trips_df['end_ts'], unit='s')
-    grouped_df = trips_df.groupby(pd.Grouper(key='end_ts', freq='D'))
+def group_dataframe_daily(df):
+    df['start_ts'] = pd.to_datetime(df['start_ts'], unit='s')
+    grouped_df = df.groupby(pd.Grouper(key='start_ts', freq='D'))
     return grouped_df
 
 
@@ -63,8 +63,7 @@ def create_table_base(table_data):
     return table
 
 
-def create_trips_by_date_table(trips_df):
-    grouped_trips = group_trips_daily(trips_df)
+def create_trips_by_date_table(grouped_trips):
     table_data = list()
     for date_time, trips in grouped_trips:
         total_trips = len(trips)
@@ -159,11 +158,30 @@ layout = html.Div(
         ]),
 
         dbc.Row([
-            dbc.Col(html.Div(id='user-trips'), lg=6),
-            dbc.Col(html.Div(id='user-places'), lg=6),
+            dbc.Col(dbc.Row(id='user-trips-map'), xl=8, lg=6),
+            dbc.Col(
+                [
+                    dbc.Row([
+                        dbc.Col(
+                            [
+                                html.Label('Select a Date'),
+                                dcc.Dropdown(
+                                    id='user-date-dropdown',
+                                    options=[]
+                                ),
+                            ],
+                            id='user-date-dropdown-container',
+                            style={'display': 'none'},
+                            width=8
+                        )
+                    ]),
+                    dbc.Row([
+                        dbc.Col(html.Div(id='user-trips'), lg=6),
+                        dbc.Col(html.Div(id='user-places'), lg=6),
+                    ]),
+                ]
+            ),
         ]),
-
-        dbc.Row(id='user-trips-map'),
     ]
 )
 
@@ -171,17 +189,18 @@ layout = html.Div(
 @callback(
     Output('user-stats', 'children'),
     Output('user-trips-by-date', 'children'),
-    Output('user-trips', 'children'),
-    Output('user-places', 'children'),
     Output('user-trips-map', 'children'),
-    Input('user-token-dropdown', 'value')
+    Output('user-date-dropdown-container', 'style'),
+    Output('user-date-dropdown', 'options'),
+    Input('user-token-dropdown', 'value'),
 )
 def update_user_stats(user_token):
     stat_cards = list()
     trips_by_date_table = None
-    trips_table = None
-    places_table = None
     trips_map = None
+    date_dropdown_style = {'display': 'none'}
+    date_dropdown_options = list()
+
     if user_token is not None:
         user_uuid = ecwu.User.fromEmail(user_token).uuid
         logging.info(f"selected user is: {user_token}")
@@ -198,15 +217,18 @@ def update_user_stats(user_token):
         trips_df = db_utils.get_trips_of_user(user_uuid)
         if len(trips_df) > 0:
             logging.info(f"trips columns: {trips_df.columns}")
-            trips_by_date_table = create_trips_by_date_table(trips_df)
-            trips_table = create_trips_table(trips_df)
+            grouped_trips = group_dataframe_daily(trips_df)
+            trips_by_date_table = create_trips_by_date_table(grouped_trips)
+            grouped_trips_keys = grouped_trips.groups.keys()
+            date_dropdown_options = [dt.date() for dt in grouped_trips_keys]
+            date_dropdown_style = {'display': 'block'}
             trips_fig = create_heatmap_fig(trips_df)
             trips_map = dcc.Graph(id="user-trip-map", figure=trips_fig)
 
-
-        places_df = db_utils.get_places_of_user(user_uuid)
-        if len(places_df) > 0:
-            logging.info(f"places columns: {places_df.columns}")
-            places_table = create_places_table(places_df)
-
-    return stat_cards, trips_by_date_table, trips_table, places_table, trips_map
+    return (
+        stat_cards,
+        trips_by_date_table,
+        trips_map,
+        date_dropdown_style,
+        date_dropdown_options,
+    )
