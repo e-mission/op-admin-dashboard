@@ -1,4 +1,5 @@
 import logging
+import math
 
 import pandas as pd
 from dash import dcc, html, Input, Output, dash_table, callback, register_page
@@ -80,9 +81,10 @@ def create_trips_by_date_table(grouped_trips):
 def create_trips_table(trips_df):
     table_data = list()
     for i, trip in trips_df.iterrows():
+        duration = trip['duration']
         table_data.append({
             'id': i + 1,
-            'duration': trip['duration'],
+            'duration': '' if math.isnan(duration) else int(duration),
             'location': trip['start_local_dt_timezone'],
             'added_activities': len(trip['additions']),
             'has_details': 1 if trip['user_input'] else 0
@@ -94,9 +96,10 @@ def create_trips_table(trips_df):
 def create_places_table(places_df):
     table_data = list()
     for i, place in places_df.iterrows():
+        duration = place['duration']
         table_data.append({
             'id': i + 1,
-            'duration': place['duration'],
+            'duration': '' if math.isnan(duration) else int(duration),
             'location': place['enter_local_dt_timezone'],
             'added_activities': len(place['additions']),
         })
