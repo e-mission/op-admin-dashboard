@@ -15,9 +15,9 @@ register_page(__name__, path="/user")
 intro = """## User Details"""
 
 
-def group_dataframe_daily(df):
-    df['start_ts'] = pd.to_datetime(df['start_ts'], unit='s')
-    grouped_df = df.groupby(pd.Grouper(key='start_ts', freq='D'))
+def group_dataframe_daily(df, time_column):
+    df[time_column] = pd.to_datetime(df[time_column], unit='s')
+    grouped_df = df.groupby(pd.Grouper(key=time_column, freq='D'))
     return grouped_df
 
 
@@ -217,7 +217,7 @@ def update_user_stats(user_token):
         trips_df = db_utils.get_trips_of_user(user_uuid)
         if len(trips_df) > 0:
             logging.info(f"trips columns: {trips_df.columns}")
-            grouped_trips = group_dataframe_daily(trips_df)
+            grouped_trips = group_dataframe_daily(trips_df, 'start_ts')
             trips_by_date_table = create_trips_by_date_table(grouped_trips)
             grouped_trips_keys = grouped_trips.groups.keys()
             date_dropdown_options = [dt.date() for dt in grouped_trips_keys]
