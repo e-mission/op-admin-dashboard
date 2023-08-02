@@ -2,7 +2,7 @@ import logging
 import math
 
 import pandas as pd
-from dash import dcc, html, Input, Output, dash_table, callback, register_page
+from dash import dcc, html, Input, Output, dash_table, callback, register_page, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 
@@ -159,26 +159,45 @@ layout = html.Div(
         dbc.Row([
             dbc.Col(dbc.Row(id='user-trips-map'), xl=8, lg=6),
             dbc.Col(
-                [
-                    dbc.Row([
-                        dbc.Col(
-                            [
-                                html.Label('Select a Date'),
-                                dcc.Dropdown(
-                                    id='user-date-dropdown',
-                                    options=[]
-                                ),
-                            ],
-                            id='user-date-dropdown-container',
-                            style={'display': 'none'},
-                            width=8
-                        )
-                    ]),
-                    dbc.Row([
-                        dbc.Col(html.Div(id='user-trips'), lg=6),
-                        dbc.Col(html.Div(id='user-places'), lg=6),
-                    ]),
-                ]
+                html.Div(
+                    [
+                        dbc.Row([
+                            dbc.Col(
+                                [
+                                    html.Label('Select a Date'),
+                                    dcc.Dropdown(
+                                        id='user-date-dropdown',
+                                        options=[]
+                                    ),
+                                ],
+                                id='user-date-dropdown-container',
+                                width=8
+                            )
+                        ]),
+                        dbc.Row([
+                            dcc.Tabs(
+                                id="user-time-use-tabs",
+                                value='user-time-use-trips-tab',
+                                children=[
+                                    dcc.Tab(
+                                        label='Trips',
+                                        value='user-time-use-trips-tab',
+                                        style={'backgroundColor': '#f2f2f2'}
+                                    ),
+                                    dcc.Tab(
+                                        label='Places',
+                                        value='user-time-use-places-tab',
+                                        style={'backgroundColor': '#f2f2f2'}
+                                    ),
+                                ]
+                            ),
+                            html.Div(id='user-time-use-content'),
+                        ]),
+                    ],
+                    id='user-time-use',
+                    style={'display': 'none'},
+                ),
+                xl=4, lg=6
             ),
         ]),
     ]
@@ -189,11 +208,11 @@ layout = html.Div(
     Output('user-stats', 'children'),
     Output('user-trips-by-date', 'children'),
     Output('user-trips-map', 'children'),
-    Output('user-date-dropdown-container', 'style'),
+    Output('user-time-use', 'style'),
     Output('user-date-dropdown', 'options'),
     Input('user-token-dropdown', 'value'),
 )
-def update_user_stats(user_token):
+def update_page_components_for_selected_user(user_token):
     stat_cards = list()
     trips_by_date_table = None
     trips_map = None
@@ -231,3 +250,29 @@ def update_user_stats(user_token):
         date_dropdown_style,
         date_dropdown_options,
     )
+
+
+@callback(
+    Output('user-time-use-content', 'children'),
+    Input('user-date-dropdown', 'value'),
+    Input('user-time-use-tabs', 'value'),
+    State('user-token-dropdown', 'value'),
+)
+def update_time_use_tables(selected_date, tab, user_token):
+    table = None
+    if selected_date is not None and user_token is not None:
+        user_uuid = ecwu.User.fromEmail(user_token).uuid
+
+        if tab == 'user-time-use-trips-tab':
+            trips_df = db_utils.get_trips_of_user(user_uuid)
+            if len(trips_df) > 0:
+                grouped_trips = group_dataframe_daily(trips_df, 'start_ts')
+                table = create_trips_table(grouped_trips.get_group(selected_date))
+
+        elif tab == 'user-time-use-places-tab':
+            places_df = db_utils.get_places_of_user(user_uuid)
+            if len(places_df) > 0:
+                grouped_places = group_dataframe_daily(places_df, 'enter_ts')
+                table = create_places_table(grouped_places.get_group(selected_date))
+
+    return table
