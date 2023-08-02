@@ -44,7 +44,7 @@ def create_stats_card(title, value):
     return card_layout
 
 
-def create_table_base(table_data):
+def create_table_base(table_data, page_size=10):
     table = None
     if table_data:
         table_columns = [
@@ -54,11 +54,7 @@ def create_table_base(table_data):
             id='user-table',
             columns=table_columns,
             data=table_data,
-            style_data={
-                'whiteSpace': 'normal',
-                'height': 'auto',
-            },
-            page_size=12,
+            page_size=page_size,
         )
 
     return table
@@ -75,7 +71,7 @@ def create_trips_by_date_table(grouped_trips):
             'labeled_trips': labeled_trips,
         })
 
-    return create_table_base(table_data)
+    return create_table_base(table_data, page_size=15)
 
 
 def create_trips_table(trips_df):
