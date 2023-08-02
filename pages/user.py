@@ -127,7 +127,7 @@ def create_heatmap_fig(trips_df):
         mapbox_center_lon=lon[0],
         mapbox_center_lat=lat[0],
         mapbox_zoom=9,
-        margin={"r": 0, "t": 50, "l": 30, "b": 0},
+        margin={"r": 0, "t": 50, "l": 30, "b": 30},
         height=500,
     )
     return fig
