@@ -77,10 +77,14 @@ def create_trips_by_date_table(grouped_trips):
 def create_trips_table(trips_df):
     table_data = list()
     for i, trip in trips_df.iterrows():
-        duration = trip['duration']
+        duration = trip.get('duration')
+        if duration is None or math.isnan(duration):
+            duration = ''
+        else:
+            duration = int(duration)
         table_data.append({
             'id': i + 1,
-            'duration': '' if math.isnan(duration) else int(duration),
+            'duration': duration,
             'location': trip['start_local_dt_timezone'],
             'added_activities': len(trip['additions']),
             'has_details': 1 if trip['user_input'] else 0
@@ -92,10 +96,14 @@ def create_trips_table(trips_df):
 def create_places_table(places_df):
     table_data = list()
     for i, place in places_df.iterrows():
-        duration = place['duration']
+        duration = place.get('duration')
+        if duration is None or math.isnan(duration):
+            duration = ''
+        else:
+            duration = int(duration)
         table_data.append({
             'id': i + 1,
-            'duration': '' if math.isnan(duration) else int(duration),
+            'duration': duration,
             'location': place['enter_local_dt_timezone'],
             'added_activities': len(place['additions']),
         })
