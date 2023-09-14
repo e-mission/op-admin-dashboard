@@ -61,6 +61,7 @@ EXCLUDED_DEMOGRAPHICS_COLS = [
     'start',
     'end',
     'attrxmlns:jr',
+    'attrxmlns:orx',
     'attrid',
     '__version__',
     'attrversion',
