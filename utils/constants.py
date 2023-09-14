@@ -49,3 +49,20 @@ BINARY_DEMOGRAPHICS_COLS = [
     'user_id',
     '_id',
 ]
+
+EXCLUDED_DEMOGRAPHICS_COLS = [
+    'data.xmlResponse', 
+    'data.name',
+    'data.version',
+    'data.label',
+    'xmlns:jr',
+    'xmlns:orx',
+    'id',
+    'start',
+    'end',
+    'attrxmlns:jr',
+    'attrid',
+    '__version__',
+    'attrversion',
+    'instanceID',
+]
