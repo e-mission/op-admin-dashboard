@@ -104,23 +104,37 @@ def query_confirmed_trips(start_date, end_date):
 def query_demographics():
     logging.debug("Querying the demographics for (no date range)")
     ts = esta.TimeSeries.get_aggregate_time_series()
-    
-    entries = ts.find_entries(["manual/demographic_survey"])
-    df = pd.json_normalize(list(entries))
-    if not df.empty:
-        for col in constants.BINARY_DEMOGRAPHICS_COLS:
-            if col in df.columns:
-                df[col] = df[col].apply(str) 
-        columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
-        df.drop(columns= columns_to_drop, inplace=True) 
-        modified_columns = perm_utils.get_demographic_columns(df.columns)  
-        df.columns = modified_columns 
-        df.columns=[col.rsplit('.',1)[-1] if col.startswith('data.jsonDocResponse.') else col for col in df.columns]  
-        for col in constants.EXCLUDED_DEMOGRAPHICS_COLS:
-            if col in df.columns:
-                df.drop(columns= [col], inplace=True) 
-    return df
 
+    entries = ts.find_entries(["manual/demographic_survey"])
+    data = list(entries)
+
+    available_key = {}
+    for entry in data:
+        survey_key = next(iter(entry['data']['jsonDocResponse']))
+        if survey_key not in available_key:
+            available_key[survey_key] = []
+        available_key[survey_key].append(entry)
+
+    dataframes = {}
+    for key, json_object in available_key.items():
+        df = pd.json_normalize(json_object)
+        dataframes[key] = df
+
+    for key, df in dataframes.items():
+        if not df.empty:
+            for col in constants.BINARY_DEMOGRAPHICS_COLS:
+                if col in df.columns:
+                    df[col] = df[col].apply(str) 
+            columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
+            df.drop(columns= columns_to_drop, inplace=True) 
+            modified_columns = perm_utils.get_demographic_columns(df.columns)  
+            df.columns = modified_columns 
+            df.columns=[col.rsplit('.',1)[-1] if col.startswith('data.jsonDocResponse.') else col for col in df.columns]  
+            for col in constants.EXCLUDED_DEMOGRAPHICS_COLS:
+                if col in df.columns:
+                    df.drop(columns= [col], inplace=True) 
+                    
+    return dataframes
 
 def query_trajectories(start_date, end_date):
     start_ts, end_ts = None, datetime.max.timestamp()

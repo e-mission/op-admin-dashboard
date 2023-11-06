@@ -164,8 +164,9 @@ home_page = [
 )
 def update_store_demographics(start_date, end_date):
     df = query_demographics()
-    records = df.to_dict("records")
-    
+    records = {}
+    for key, dataframe in df.items():
+        records[key] = dataframe.to_dict("records")
     store = {
         "data": records,
         "length": len(records),
