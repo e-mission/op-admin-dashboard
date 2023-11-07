@@ -86,7 +86,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         # for multiple survey, create subtabs for unique surveys
         else:
             return html.Div([
-                dcc.Tabs(id='subtabs-demographics', value='sub-tab-1', children=[
+                dcc.Tabs(id='subtabs-demographics', value=next(iter(data)), children=[
                     dcc.Tab(label= key, value= key) for key in data
             ]),  
                 html.Div(id='subtabs-demographics-content')
