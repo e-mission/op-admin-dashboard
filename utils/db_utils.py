@@ -102,6 +102,7 @@ def query_confirmed_trips(start_date, end_date):
     return df
 
 def query_demographics():
+    # Returns dictionary of df where key represent differnt survey id and values are df for each survey
     logging.debug("Querying the demographics for (no date range)")
     ts = esta.TimeSeries.get_aggregate_time_series()
 

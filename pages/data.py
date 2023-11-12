@@ -79,8 +79,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         data = store_demographics["data"]
         # if only one survey is available, process it without creating a subtab
         if len(data) == 1:   
-            key =next(iter(data))
-            data = data[key]
+            data = data[0]
             columns = list(data[0].keys())
             has_perm = perm_utils.has_permission('data_demographics')
         # for multiple survey, create subtabs for unique surveys
@@ -134,7 +133,6 @@ def update_sub_tab(tab, store_demographics):
             return None
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
-        df = clean_location_data(df)
 
         return populate_datatable(df)
       
