@@ -78,10 +78,10 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
     elif tab == 'tab-demographics-datatable':
         data = store_demographics["data"]
         # if only one survey is available, process it without creating a subtab
-        if len(data) == 1:   
-            data = data[0]
+        if len(data) == 1: 
+            # here data is a dictionary 
+            data = next(iter(data.values()))
             columns = list(data[0].keys())
-            has_perm = perm_utils.has_permission('data_demographics')
         # for multiple survey, create subtabs for unique surveys
         else:
             return html.Div([
@@ -90,6 +90,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
             ]),  
                 html.Div(id='subtabs-demographics-content')
             ]) 
+        has_perm = perm_utils.has_permission('data_demographics')
     elif tab == 'tab-trajectories-datatable':
         # Currently store_trajectories data is loaded only when the respective tab is selected
         #Here we query for trajectory data once "Trajectories" tab is selected
