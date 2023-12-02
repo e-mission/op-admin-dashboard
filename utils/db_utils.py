@@ -111,7 +111,7 @@ def query_demographics():
 
     available_key = {}
     for entry in data:
-        survey_key = next(iter(entry['data']['jsonDocResponse']))
+        survey_key = list(entry['data']['jsonDocResponse'].keys())[0]
         if survey_key not in available_key:
             available_key[survey_key] = []
         available_key[survey_key].append(entry)

@@ -81,7 +81,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         # if only one survey is available, process it without creating a subtab
         if len(data) == 1: 
             # here data is a dictionary 
-            data = next(iter(data.values()))
+            data = list(data.values())[0]
             columns = list(data[0].keys())
         # for multiple survey, create subtabs for unique surveys
         else:
@@ -89,7 +89,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
             if not has_perm:
                 return None
             return html.Div([
-                dcc.Tabs(id='subtabs-demographics', value=next(iter(data)), children=[
+                dcc.Tabs(id='subtabs-demographics', value=list(data.keys())[0], children=[
                     dcc.Tab(label= key, value= key) for key in data
             ]),  
                 html.Div(id='subtabs-demographics-content')
