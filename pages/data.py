@@ -10,6 +10,7 @@ import logging
 import pandas as pd
 from dash.exceptions import PreventUpdate
 
+from utils import constants
 from utils import permissions as perm_utils
 from utils import db_utils
 from utils.db_utils import query_trajectories
@@ -74,7 +75,28 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         columns.update(
             col['label'] for col in perm_utils.get_allowed_named_trip_columns()
         )
+        initial_displayed_columns = constants.INITIAL_TRIP_COLS
         has_perm = perm_utils.has_permission('data_trips')
+        df = pd.DataFrame(data)
+        if df.empty or not has_perm:
+            return None
+
+        df = df.drop(columns=[col for col in df.columns if col not in columns])
+        df = clean_location_data(df)
+
+        my_table = populate_datatable(df, 'my-trips-table')
+        return html.Div([
+            dcc.Dropdown(
+                id='selected-columns', 
+                options=[{'label' : col, 'value' : col} for col in columns if col not in initial_displayed_columns],
+                multi=True,
+                value=[],
+                style={'width':'200px'},
+                placeholder='Select Raw Value Columns'
+            ),
+            my_table,
+        ]) 
+      
     elif tab == 'tab-demographics-datatable':
         data = store_demographics["data"]
         has_perm = perm_utils.has_permission('data_demographics')
@@ -116,9 +138,8 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         return None
 
     df = df.drop(columns=[col for col in df.columns if col not in columns])
-    df = clean_location_data(df)
 
-    return populate_datatable(df)
+    return populate_datatable(df, 'my-table')
 
 # handle subtabs for demographic table when there are multiple surveys
 @callback(
@@ -140,13 +161,28 @@ def update_sub_tab(tab, store_demographics):
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
-        return populate_datatable(df)
-      
-def populate_datatable(df):
+        return populate_datatable(df, 'my-table')
+
+@callback(
+    Output('my-trips-table', 'hidden_columns'),
+    Input('selected-columns', 'value'),
+    Input('store-trips', 'data'),
+)
+def update_dropdowns_trips(selected_columns, store_trips):
+    columns = perm_utils.get_allowed_trip_columns()
+    columns.update(
+        col['label'] for col in perm_utils.get_allowed_named_trip_columns()
+    )
+    initial_displayed_columns = constants.INITIAL_TRIP_COLS
+    hidden_col = [col for col in columns if col not in initial_displayed_columns + selected_columns]
+    return hidden_col
+
+
+def populate_datatable(df, table_id):
     if not isinstance(df, pd.DataFrame):
         raise PreventUpdate
     return dash_table.DataTable(
-        # id='my-table',
+        id=table_id,
         # columns=[{"name": i, "id": i} for i in df.columns],
         data=df.to_dict('records'),
         export_format="csv",
