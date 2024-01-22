@@ -75,7 +75,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         columns.update(
             col['label'] for col in perm_utils.get_allowed_named_trip_columns()
         )
-        initial_displayed_columns = constants.INITIAL_TRIP_COLS
+        hidden_columns = ["data.duration.raw", "data.distance.raw"]
         has_perm = perm_utils.has_permission('data_trips')
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
@@ -88,7 +88,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         return html.Div([
             dcc.Dropdown(
                 id='selected-columns', 
-                options=[{'label' : col, 'value' : col} for col in columns if col not in initial_displayed_columns],
+                options=[{'label' : col, 'value' : col} for col in hidden_columns],
                 multi=True,
                 value=[],
                 style={'width':'200px'},
@@ -169,12 +169,8 @@ def update_sub_tab(tab, store_demographics):
     Input('store-trips', 'data'),
 )
 def update_dropdowns_trips(selected_columns, store_trips):
-    columns = perm_utils.get_allowed_trip_columns()
-    columns.update(
-        col['label'] for col in perm_utils.get_allowed_named_trip_columns()
-    )
-    initial_displayed_columns = constants.INITIAL_TRIP_COLS
-    hidden_col = [col for col in columns if col not in initial_displayed_columns + selected_columns]
+    hidden_columns = ["data.duration.raw", "data.distance.raw"]
+    hidden_col = [col for col in hidden_columns if col not in  selected_columns]
     return hidden_col
 
 

@@ -25,21 +25,6 @@ VALID_TRIP_COLS = [
     "user_id"
 ]
 
-INITIAL_TRIP_COLS =[
-    "data.start_local_dt",
-    "data.start_fmt_time",
-    "data.end_local_dt",
-    "data.end_fmt_time",
-    "data.duration",
-    "data.distance",
-    "data.start_loc.coordinates",
-    "data.end_loc.coordinates",
-    "user_id",
-    "mode_confirm",
-    "purpose_confirm",
-    "replaced_mode",
-]
-
 BINARY_TRIP_COLS = [
     'user_id',
     'data.start_place',
