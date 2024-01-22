@@ -194,5 +194,6 @@ def populate_datatable(df, table_id):
             # 'width': '100px',
             # 'maxWidth': '100px',
         },
-        style_table={'overflowX': 'auto'}
+        style_table={'overflowX': 'auto'},
+        css=[{"selector":".show-hide", "rule":"display:none"}]
     )
