@@ -85,16 +85,16 @@ def query_confirmed_trips(start_date, end_date):
         # https://github.com/e-mission/op-admin-dashboard/issues/29#issuecomment-1530105040
         # https://github.com/e-mission/op-admin-dashboard/issues/29#issuecomment-1530439811
         # so just replacing the distance and duration with the humanized values for now
-        df['data.distance.raw'] = df['data.distance']
+        df['data.distance_meters'] = df['data.distance']
         use_imperial = perm_utils.config.get("display_config",
             {"use_imperial": False}).get("use_imperial", False)
         # convert to km to humanize
-        df['data.distance'] = df['data.distance'] / 1000
+        df['data.distance_km'] = df['data.distance'] / 1000
         # convert km further to miles because this is the US, Liberia or Myanmar
         # https://en.wikipedia.org/wiki/Mile
-        df['data.duration.raw'] = df['data.duration']
+        df['data.duration_seconds'] = df['data.duration']
         if use_imperial:
-            df['data.distance'] = df['data.distance'] * 0.6213712
+            df['data.distance_miles'] = df['data.distance_km'] * 0.6213712
 
         df['data.duration'] = df['data.duration'].apply(lambda d: arrow.utcnow().shift(seconds=d).humanize(only_distance=True))
 

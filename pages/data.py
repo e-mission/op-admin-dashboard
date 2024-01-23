@@ -75,7 +75,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         columns.update(
             col['label'] for col in perm_utils.get_allowed_named_trip_columns()
         )
-        hidden_columns = ["data.duration.raw", "data.distance.raw"]
+        hidden_columns = ["data.duration_seconds", "data.distance_meters","data.distance"]
         has_perm = perm_utils.has_permission('data_trips')
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
@@ -84,7 +84,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         df = df.drop(columns=[col for col in df.columns if col not in columns])
         df = clean_location_data(df)
 
-        my_table = populate_datatable(df, 'my-trips-table')
+        trips_table = populate_datatable(df, 'trips-datatable')
         return html.Div([
             dcc.Dropdown(
                 id='selected-columns', 
@@ -94,7 +94,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
                 style={'width':'200px'},
                 placeholder='Select Raw Value Columns'
             ),
-            my_table,
+            trips_table,
         ]) 
       
     elif tab == 'tab-demographics-datatable':
@@ -139,7 +139,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
 
     df = df.drop(columns=[col for col in df.columns if col not in columns])
 
-    return populate_datatable(df, 'my-table')
+    return populate_datatable(df, 'datatable')
 
 # handle subtabs for demographic table when there are multiple surveys
 @callback(
@@ -161,15 +161,16 @@ def update_sub_tab(tab, store_demographics):
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
-        return populate_datatable(df, 'my-table')
+        return populate_datatable(df, 'demographics-datatable')
+
 
 @callback(
-    Output('my-trips-table', 'hidden_columns'),
+    Output('trips-datatable', 'hidden_columns'),
     Input('selected-columns', 'value'),
     Input('store-trips', 'data'),
 )
 def update_dropdowns_trips(selected_columns, store_trips):
-    hidden_columns = ["data.duration.raw", "data.distance.raw"]
+    hidden_columns = ["data.duration_seconds", "data.distance_meters", "data.distance"]
     hidden_col = [col for col in hidden_columns if col not in  selected_columns]
     return hidden_col
 
