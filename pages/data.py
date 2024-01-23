@@ -3,7 +3,7 @@ Note that the callback will trigger even if prevent_initial_call=True. This is b
 Since the dcc.Location component is not in the layout when navigating to this page, it triggers the callback.
 The workaround is to check if the input value is None.
 """
-from dash import dcc, html, Input, Output, callback, register_page, dash_table
+from dash import dcc, html, Input, Output, callback, register_page, dash_table, State
 from datetime import date, timedelta
 # Etc
 import logging
@@ -75,7 +75,6 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         columns.update(
             col['label'] for col in perm_utils.get_allowed_named_trip_columns()
         )
-        hidden_columns = ["data.duration_seconds", "data.distance_meters","data.distance"]
         has_perm = perm_utils.has_permission('data_trips')
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
@@ -86,13 +85,11 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
 
         trips_table = populate_datatable(df, 'trips-datatable')
         return html.Div([
-            dcc.Dropdown(
-                id='selected-columns', 
-                options=[{'label' : col, 'value' : col} for col in hidden_columns],
-                multi=True,
-                value=[],
-                style={'width':'200px'},
-                placeholder='Select Raw Value Columns'
+            html.Button(
+                'Display columns with raw units',
+                id='button-clicked', 
+                n_clicks=0,
+                style={'marginLeft':'5px'}
             ),
             trips_table,
         ]) 
@@ -166,13 +163,24 @@ def update_sub_tab(tab, store_demographics):
 
 @callback(
     Output('trips-datatable', 'hidden_columns'),
-    Input('selected-columns', 'value'),
-    Input('store-trips', 'data'),
+    Output('button-clicked', 'children'),
+    Input('button-clicked', 'n_clicks'),
+    State('button-clicked', 'children')
 )
-def update_dropdowns_trips(selected_columns, store_trips):
-    hidden_columns = ["data.duration_seconds", "data.distance_meters", "data.distance"]
-    hidden_col = [col for col in hidden_columns if col not in  selected_columns]
-    return hidden_col
+def update_dropdowns_trips(n_clicks, button_label):
+    columns = perm_utils.get_allowed_trip_columns()
+    columns.update(
+        col['label'] for col in perm_utils.get_allowed_named_trip_columns()
+    )
+    if n_clicks % 2 == 0:
+        hidden_col = ["data.duration_seconds", "data.distance_meters","data.distance"]
+        button_label = 'Display columns with raw units'
+    else:
+        hidden_columns = ["data.duration", "data.distance_miles", "data.distance_km", "data.distance"]
+        hidden_col = [col for col in hidden_columns if col in columns]
+        button_label = 'Display columns with humanzied units'
+    return hidden_col, button_label
+
 
 
 def populate_datatable(df, table_id):
