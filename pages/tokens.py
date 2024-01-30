@@ -20,6 +20,16 @@ if has_permission('token_generate'):
 intro = """## Tokens"""
 QRCODE_PATH = 'assets/qrcodes'
 
+def query_tokens():
+    query_result = edb.get_token_db().find({}, {"_id": 0})
+    df = pd.json_normalize(list(query_result))
+    return df
+
+def generate_qrcodes_for_all_tokens():
+    df = query_tokens()
+    for _, row in df.iterrows():
+        saveAsQRCode(QRCODE_PATH, row['token'])
+
 layout = html.Div(
     [
         dcc.Markdown(intro),
@@ -95,6 +105,7 @@ layout = html.Div(
         }),
     ]
 )
+generate_qrcodes_for_all_tokens()
 
 @callback(
     Output('token-generate', 'n_clicks'),
