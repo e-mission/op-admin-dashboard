@@ -3,6 +3,7 @@ import zipfile
 
 import pandas as pd
 
+import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html, Input, Output, callback, State, register_page, dash_table
 
@@ -96,7 +97,7 @@ layout = html.Div(
         ]),
 
         html.Div(id='token-table'),
-
+        html.Div(id='deleted-row-msg'),
         html.Br(),
         html.Button(children='Export QR codes', id='token-export', n_clicks=0, style={
             'font-size': '14px', 'width': '140px', 'display': 'block', 'margin-bottom': '10px',
@@ -106,6 +107,7 @@ layout = html.Div(
     ]
 )
 generate_qrcodes_for_all_tokens()
+
 
 @callback(
     Output('token-generate', 'n_clicks'),
@@ -127,6 +129,29 @@ def generate_tokens(n_clicks, program, token_length, token_count, out_format, ch
     tokens_table = populate_datatable()
     return 0, tokens_table
 
+
+@callback(
+    Output('deleted-row-msg', 'children'),
+    [Input('tokens-table', 'data_previous')],
+    [State('tokens-table', 'data')]
+)
+
+def delete_token_on_row_selection(previous, current):
+    if previous is None:
+        dash.exceptions.PreventUpdate()
+    else:
+        for row in previous:
+            if row not in current:
+                return delete_token([row['token']])
+
+
+def delete_token(token_list):
+    delete_list = [{"token":t} for t in token_list]
+    edb.get_token_db().delete_one(delete_list[0])
+    qrcode_file_path = os.path.join(QRCODE_PATH, f"{token_list[0]}.png")
+    if os.path.exists(qrcode_file_path):
+        os.remove(qrcode_file_path)
+    return 'Just removed {}'.format(token_list)
 
 @callback(
     Output('download-token', 'data'),
@@ -172,9 +197,9 @@ def populate_datatable():
         markdown_options={"html": True},
         style_table={'overflowX': 'auto'},
         export_format='csv',
+        row_deletable=True
     )
 
-def query_tokens():
-    query_result = edb.get_token_db().find({}, {"_id": 0})
-    df = pd.json_normalize(list(query_result))
-    return df
+
+
+
