@@ -26,7 +26,7 @@ def query_tokens():
     df = pd.json_normalize(list(query_result))
     return df
 
-def generate_qrcodes_for_all_tokens():
+def generate_qrcodes_for_all_tokens(): #generate QR codes for all tokens stored in the database
     df = query_tokens()
     for _, row in df.iterrows():
         saveAsQRCode(QRCODE_PATH, row['token'])
@@ -95,10 +95,21 @@ layout = html.Div(
                 sm=6,
             ),
         ]),
-
         html.Div(id='token-table'),
-        html.Div(id='deleted-row-msg'),
+        #Initializes a Dash callback store named 'selected-rows' with initial data as an empty list
+        #The store is updated by Dash callbacks based on user interaction (when user makes row selection)
+        dcc.Store(id='selected-rows', data=[]),
         html.Br(),
+        #Create a confirmation dialog provider with a button(Delete Selected tokens) triggering a confirmation message.
+        #Allow users to delete tokens with users confirmation.
+        dcc.ConfirmDialogProvider(
+            children=html.Button('Delete Selected Tokens', id = 'delete-button', style = {'float': 'left',  
+            'font-size': '14px', 'width': '160px', 'display': 'block', 'margin-bottom': '10px',
+            'margin-right': '5px', 'height':'40px', 'verticalAlign': 'top', 'background-color': 'green',
+            'color': 'white',}),
+            id='confirm-delete',
+            message='Are you sure you want to delete selected token(s)?',
+        ),
         html.Button(children='Export QR codes', id='token-export', n_clicks=0, style={
             'font-size': '14px', 'width': '140px', 'display': 'block', 'margin-bottom': '10px',
             'margin-right': '5px', 'height':'40px', 'verticalAlign': 'top', 'background-color': 'green',
@@ -106,7 +117,46 @@ layout = html.Div(
         }),
     ]
 )
-generate_qrcodes_for_all_tokens()
+generate_qrcodes_for_all_tokens() #Generate QR codes for all tokens stored in database
+
+
+#Update the 'selected-rows' store based on changes in selected rows in 'tokens-table'
+@callback(
+    Output('selected-rows', 'data'),
+    Input('tokens-table', 'selected_rows'),
+    prevent_initial_call=True
+)
+def update_selected_rows(selected_rows):
+    #Update the 'selected-rows' store with the current selected rows
+    return selected_rows
+
+
+@callback(
+    [Output('tokens-table', 'data'),
+    Output('tokens-table', 'selected_rows')],
+    Input('confirm-delete','submit_n_clicks'),
+    State('tokens-table', 'data'),
+    State('selected-rows', 'data'),
+    prevent_initial_call=True
+)
+#Delete selected rows based on confirmation
+def delete_selected_rows(submit_clicks, current_data, selected_rows):
+    #Check if the delete confirmation button is clicked
+    if submit_clicks:
+        #Remove selected rows from the current data
+        current_data = [row for i, row in enumerate(current_data) if i not in selected_rows]
+        df = query_tokens()
+        delete_list = df.iloc[selected_rows].to_dict('records')
+        #Delete tokens on rows to be deleted and remove associated QR codes
+        for token_dict in delete_list:
+            edb.get_token_db().delete_one(token_dict)
+            qrcode_file_path = os.path.join(QRCODE_PATH, f"{token_dict['token']}.png")
+            if os.path.exists(qrcode_file_path):
+                os.remove(qrcode_file_path)
+        #Clear the list of selected rows
+        selected_rows = []
+    #Return updated data and selected rows for tokens-table
+    return current_data, selected_rows
 
 
 @callback(
@@ -129,29 +179,6 @@ def generate_tokens(n_clicks, program, token_length, token_count, out_format, ch
     tokens_table = populate_datatable()
     return 0, tokens_table
 
-
-@callback(
-    Output('deleted-row-msg', 'children'),
-    [Input('tokens-table', 'data_previous')],
-    [State('tokens-table', 'data')]
-)
-
-def delete_token_on_row_selection(previous, current):
-    if previous is None:
-        dash.exceptions.PreventUpdate()
-    else:
-        for row in previous:
-            if row not in current:
-                return delete_token([row['token']])
-
-
-def delete_token(token_list):
-    delete_list = [{"token":t} for t in token_list]
-    edb.get_token_db().delete_one(delete_list[0])
-    qrcode_file_path = os.path.join(QRCODE_PATH, f"{token_list[0]}.png")
-    if os.path.exists(qrcode_file_path):
-        os.remove(qrcode_file_path)
-    return 'Just removed {}'.format(token_list)
 
 @callback(
     Output('download-token', 'data'),
@@ -197,7 +224,8 @@ def populate_datatable():
         markdown_options={"html": True},
         style_table={'overflowX': 'auto'},
         export_format='csv',
-        row_deletable=True
+        row_selectable='multi', #Allow multiple row selection
+        selected_rows=[], #Initialize selected_rows as an empty list
     )
 
 
