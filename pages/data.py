@@ -84,14 +84,15 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         df = clean_location_data(df)
 
         trips_table = populate_datatable(df, 'trips-datatable')
+        #Return an HTML Div containing a button (button-clicked) and the populated datatable
         return html.Div([
             html.Button(
                 'Display columns with raw units',
-                id='button-clicked', 
-                n_clicks=0,
+                id='button-clicked', #identifier for the button
+                n_clicks=0, #initialize number of clicks to 0
                 style={'marginLeft':'5px'}
             ),
-            trips_table,
+            trips_table, #populated trips table component
         ]) 
       
     elif tab == 'tab-demographics-datatable':
@@ -162,11 +163,12 @@ def update_sub_tab(tab, store_demographics):
 
 
 @callback(
-    Output('trips-datatable', 'hidden_columns'),
-    Output('button-clicked', 'children'),
-    Input('button-clicked', 'n_clicks'),
-    State('button-clicked', 'children')
+    Output('trips-datatable', 'hidden_columns'), # Output hidden columns in the table
+    Output('button-clicked', 'children'), #updates button label
+    Input('button-clicked', 'n_clicks'), #number of clicks on the button
+    State('button-clicked', 'children') #State representing the current label of button
 )
+#Controls visibility of columns in trips table  and updates the label of button based on the number of clicks.
 def update_dropdowns_trips(n_clicks, button_label):
     columns = perm_utils.get_allowed_trip_columns()
     columns.update(
@@ -179,6 +181,7 @@ def update_dropdowns_trips(n_clicks, button_label):
         hidden_columns = ["data.duration", "data.distance_miles", "data.distance_km", "data.distance"]
         hidden_col = [col for col in hidden_columns if col in columns]
         button_label = 'Display columns with humanzied units'
+    #return the list of hidden columns and the updated button label
     return hidden_col, button_label
 
 
