@@ -69,12 +69,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         data = db_utils.add_user_stats(data)
         columns = perm_utils.get_uuids_columns()
         has_perm = perm_utils.has_permission('data_uuids')
-        df = pd.DataFrame(data)
-        if df.empty or not has_perm:
-            return None
-        df = df.drop(columns=[col for col in df.columns if col not in columns])
-        return populate_datatable(df, 'uuids-datatable')
-
+         
     elif tab == 'tab-trips-datatable':
         data = store_trips["data"]
         columns = perm_utils.get_allowed_trip_columns()
@@ -89,7 +84,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         df = df.drop(columns=[col for col in df.columns if col not in columns])
         df = clean_location_data(df)
 
-        trips_table = populate_datatable(df, 'trips-datatable')
+        trips_table = populate_datatable(df)
         #Return an HTML Div containing a button (button-clicked) and the populated datatable
         return html.Div([
             html.Button(
@@ -120,12 +115,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
             ]),  
                 html.Div(id='subtabs-demographics-content')
             ]) 
-        df = pd.DataFrame(data)
-        if df.empty or not has_perm:
-            return None
-        df = df.drop(columns=[col for col in df.columns if col not in columns])
-        return populate_datatable(df, 'demographics-datatable')
-
+            
     elif tab == 'tab-trajectories-datatable':
         # Currently store_trajectories data is loaded only when the respective tab is selected
         #Here we query for trajectory data once "Trajectories" tab is selected
@@ -142,11 +132,12 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
             columns = list(data[0].keys())
             columns = perm_utils.get_trajectories_columns(columns)
             has_perm = perm_utils.has_permission('data_trajectories')
-        df = pd.DataFrame(data)
-        if df.empty or not has_perm:
-            return None
-        df = df.drop(columns=[col for col in df.columns if col not in columns])
-        return populate_datatable(df, 'trajectories-datatable')
+    df = pd.DataFrame(data)
+    if df.empty or not has_perm:
+        return None
+    df = df.drop(columns=[col for col in df.columns if col not in columns])
+    return populate_datatable(df)
+
 
 # handle subtabs for demographic table when there are multiple surveys
 @callback(
@@ -168,11 +159,11 @@ def update_sub_tab(tab, store_demographics):
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
-        return populate_datatable(df, 'demographics-datatable')
+        return populate_datatable(df)
 
 
 @callback(
-    Output('trips-datatable', 'hidden_columns'), # Output hidden columns in the table
+    Output('data-table', 'hidden_columns'), # Output hidden columns in the table
     Output('button-clicked', 'children'), #updates button label
     Input('button-clicked', 'n_clicks'), #number of clicks on the button
     State('button-clicked', 'children') #State representing the current label of button
@@ -194,12 +185,11 @@ def update_dropdowns_trips(n_clicks, button_label):
     return hidden_col, button_label
 
 
-
-def populate_datatable(df, table_id):
+def populate_datatable(df):
     if not isinstance(df, pd.DataFrame):
         raise PreventUpdate
     return dash_table.DataTable(
-        id=table_id,
+        id= 'data-table', #common id for all table(users,trips,demographics,trajectories)
         # columns=[{"name": i, "id": i} for i in df.columns],
         data=df.to_dict('records'),
         export_format="csv",
