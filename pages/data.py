@@ -170,16 +170,11 @@ def update_sub_tab(tab, store_demographics):
 )
 #Controls visibility of columns in trips table  and updates the label of button based on the number of clicks.
 def update_dropdowns_trips(n_clicks, button_label):
-    columns = perm_utils.get_allowed_trip_columns()
-    columns.update(
-        col['label'] for col in perm_utils.get_allowed_named_trip_columns()
-    )
     if n_clicks % 2 == 0:
         hidden_col = ["data.duration_seconds", "data.distance_meters","data.distance"]
         button_label = 'Display columns with raw units'
     else:
-        hidden_columns = ["data.duration", "data.distance_miles", "data.distance_km", "data.distance"]
-        hidden_col = [col for col in hidden_columns if col in columns]
+        hidden_col = ["data.duration", "data.distance_miles", "data.distance_km", "data.distance"]
         button_label = 'Display columns with humanzied units'
     #return the list of hidden columns and the updated button label
     return hidden_col, button_label
