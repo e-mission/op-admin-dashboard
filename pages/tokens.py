@@ -27,9 +27,11 @@ def query_tokens():
     return df
 
 def generate_qrcodes_for_all_tokens(): #generate QR codes for all tokens stored in the database
-    df = query_tokens()
-    for _, row in df.iterrows():
-        saveAsQRCode(QRCODE_PATH, row['token'])
+    if not os.listdir(QRCODE_PATH):
+        df = query_tokens()
+        for _, row in df.iterrows():
+            df = query_tokens()
+            saveAsQRCode(QRCODE_PATH, row['token'])
 
 layout = html.Div(
     [
