@@ -30,7 +30,6 @@ def generate_qrcodes_for_all_tokens(): #generate QR codes for all tokens stored 
     if not os.listdir(QRCODE_PATH):
         df = query_tokens()
         for _, row in df.iterrows():
-            df = query_tokens()
             saveAsQRCode(QRCODE_PATH, row['token'])
 
 layout = html.Div(
