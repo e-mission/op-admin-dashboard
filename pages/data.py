@@ -3,8 +3,7 @@ Note that the callback will trigger even if prevent_initial_call=True. This is b
 Since the dcc.Location component is not in the layout when navigating to this page, it triggers the callback.
 The workaround is to check if the input value is None.
 """
-from dash import dcc, html, Input, Output, callback, register_page, dash_table, State
-from datetime import date, timedelta
+from dash import dcc, html, Input, Output, callback, register_page, dash_table
 # Etc
 import logging
 import pandas as pd
@@ -14,6 +13,7 @@ from utils import constants
 from utils import permissions as perm_utils
 from utils import db_utils
 from utils.db_utils import query_trajectories
+from utils.datetime_utils import iso_to_date_only
 register_page(__name__, path="/data")
 
 intro = """## Data"""
@@ -39,10 +39,10 @@ def clean_location_data(df):
         df['data.end_loc.coordinates'] = df['data.end_loc.coordinates'].apply(lambda x: f'({x[0]}, {x[1]})')
     return df
 
-def update_store_trajectories(start_date_obj,end_date_obj):
+def update_store_trajectories(start_date: str, end_date: str, tz: str):
     global store_trajectories
-    df = query_trajectories(start_date_obj,end_date_obj)
-    records = df.to_dict("records")   
+    df = query_trajectories(start_date, end_date, tz)
+    records = df.to_dict("records")
     store = {
         "data": records,
         "length": len(records),
@@ -60,9 +60,9 @@ def update_store_trajectories(start_date_obj,end_date_obj):
     Input('store-trajectories', 'data'),
     Input('date-picker', 'start_date'),
     Input('date-picker', 'end_date'),
-
+    Input('date-picker-timezone', 'value'),
 )
-def render_content(tab, store_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date):
+def render_content(tab, store_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date, timezone):
     data, columns, has_perm = None, [], False
     if tab == 'tab-uuids-datatable':
         data = store_uuids["data"]
@@ -119,14 +119,9 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
     elif tab == 'tab-trajectories-datatable':
         # Currently store_trajectories data is loaded only when the respective tab is selected
         #Here we query for trajectory data once "Trajectories" tab is selected
-        if not start_date or not end_date:
-            end_date_obj = date.today()
-            start_date_obj = end_date_obj - timedelta(days=7)
-        else:
-            start_date_obj = date.fromisoformat(start_date) 
-            end_date_obj = date.fromisoformat(end_date)
+        (start_date, end_date) = iso_to_date_only(start_date, end_date)
         if store_trajectories == {}:
-            store_trajectories = update_store_trajectories(start_date_obj,end_date_obj)
+            store_trajectories = update_store_trajectories(start_date, end_date, timezone)
         data = store_trajectories["data"]
         if data:
             columns = list(data[0].keys())
