@@ -3,7 +3,7 @@ Note that the callback will trigger even if prevent_initial_call=True. This is b
 Since the dcc.Location component is not in the layout when navigating to this page, it triggers the callback.
 The workaround is to check if the input value is None.
 """
-from dash import dcc, html, Input, Output, callback, register_page, dash_table
+from dash import dcc, html, Input, Output, callback, register_page, dash_table, State
 # Etc
 import logging
 import pandas as pd
