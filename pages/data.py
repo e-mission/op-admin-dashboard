@@ -84,7 +84,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         df = df.drop(columns=[col for col in df.columns if col not in columns])
         df = clean_location_data(df)
 
-        trips_table = populate_datatable(df)
+        trips_table = populate_datatable(df,'trips-table')
         #Return an HTML Div containing a button (button-clicked) and the populated datatable
         return html.Div([
             html.Button(
@@ -163,7 +163,7 @@ def update_sub_tab(tab, store_demographics):
 
 
 @callback(
-    Output('data-table', 'hidden_columns'), # Output hidden columns in the table
+    Output('trips-table', 'hidden_columns'), # Output hidden columns in the trips-table
     Output('button-clicked', 'children'), #updates button label
     Input('button-clicked', 'n_clicks'), #number of clicks on the button
     State('button-clicked', 'children') #State representing the current label of button
@@ -180,11 +180,11 @@ def update_dropdowns_trips(n_clicks, button_label):
     return hidden_col, button_label
 
 
-def populate_datatable(df):
+def populate_datatable(df, table_id=''):
     if not isinstance(df, pd.DataFrame):
         raise PreventUpdate
     return dash_table.DataTable(
-        id= 'data-table', #common id for all table(users,trips,demographics,trajectories)
+        id= table_id,
         # columns=[{"name": i, "id": i} for i in df.columns],
         data=df.to_dict('records'),
         export_format="csv",
