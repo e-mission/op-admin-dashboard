@@ -1,8 +1,6 @@
 import logging
-from datetime import datetime, timezone
-from uuid import UUID
-
 import arrow
+from uuid import UUID
 
 import pandas as pd
 import pymongo
@@ -15,25 +13,30 @@ import emission.core.wrapper.motionactivity as ecwm
 
 from utils import constants
 from utils import permissions as perm_utils
+from utils.datetime_utils import iso_range_to_ts_range
 
+def query_uuids(start_date: str, end_date: str, tz: str):
+    # As of now, time filtering does not apply to UUIDs; we just query all of them.
+    # Vestigial code commented out and left below for future reference
 
-def query_uuids(start_date, end_date):
-    logging.debug("Querying the UUID DB for %s -> %s" % (start_date,end_date))
-    query = {'update_ts': {'$exists': True}}
-    if start_date is not None:
-        start_time = datetime.combine(start_date, datetime.min.time()).astimezone(timezone.utc)
-        query['update_ts']['$gte'] = start_time
+    # logging.debug("Querying the UUID DB for %s -> %s" % (start_date,end_date))
+    # query = {'update_ts': {'$exists': True}}
+    # if start_date is not None:
+    #     # have arrow create a datetime using start_date and time 00:00:00 in UTC
+    #     start_time = arrow.get(start_date).datetime
+    #     query['update_ts']['$gte'] = start_time
+    # if end_date is not None:
+    #     # have arrow create a datetime using end_date and time 23:59:59 in UTC
+    #     end_time = arrow.get(end_date).replace(hour=23, minute=59, second=59).datetime
+    #     query['update_ts']['$lt'] = end_time
+    # projection = {
+    #     '_id': 0,
+    #     'user_id': '$uuid',
+    #     'user_token': '$user_email',
+    #     'update_ts': 1
+    # }
 
-    if end_date is not None:
-        end_time = datetime.combine(end_date, datetime.max.time()).astimezone(timezone.utc)
-        query['update_ts']['$lt'] = end_time
-
-    projection = {
-        '_id': 0,
-        'user_id': '$uuid',
-        'user_token': '$user_email',
-        'update_ts': 1
-    }
+    logging.debug("Querying the UUID DB for (no date range)")
 
     # This should actually use the profile DB instead of (or in addition to)
     # the UUID DB so that we can see the app version, os, manufacturer...
@@ -49,14 +52,8 @@ def query_uuids(start_date, end_date):
         df.drop(columns=["uuid", "_id"], inplace=True)
     return df
 
-def query_confirmed_trips(start_date, end_date):
-    start_ts, end_ts = None, datetime.max.timestamp()
-    if start_date is not None:
-        start_ts = datetime.combine(start_date, datetime.min.time()).timestamp()
-
-    if end_date is not None:
-        end_ts = datetime.combine(end_date, datetime.max.time()).timestamp()
-
+def query_confirmed_trips(start_date: str, end_date: str, tz: str):
+    (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
     ts = esta.TimeSeries.get_aggregate_time_series()
     # Note to self, allow end_ts to also be null in the timequery
     # we can then remove the start_time, end_time logic
@@ -85,14 +82,16 @@ def query_confirmed_trips(start_date, end_date):
         # https://github.com/e-mission/op-admin-dashboard/issues/29#issuecomment-1530105040
         # https://github.com/e-mission/op-admin-dashboard/issues/29#issuecomment-1530439811
         # so just replacing the distance and duration with the humanized values for now
+        df['data.distance_meters'] = df['data.distance']
         use_imperial = perm_utils.config.get("display_config",
             {"use_imperial": False}).get("use_imperial", False)
         # convert to km to humanize
-        df['data.distance'] = df['data.distance'] / 1000
+        df['data.distance_km'] = df['data.distance'] / 1000
         # convert km further to miles because this is the US, Liberia or Myanmar
         # https://en.wikipedia.org/wiki/Mile
+        df['data.duration_seconds'] = df['data.duration']
         if use_imperial:
-            df['data.distance'] = df['data.distance'] * 0.6213712
+            df['data.distance_miles'] = df['data.distance_km'] * 0.6213712
 
         df['data.duration'] = df['data.duration'].apply(lambda d: arrow.utcnow().shift(seconds=d).humanize(only_distance=True))
 
@@ -137,15 +136,10 @@ def query_demographics():
                     
     return dataframes
 
-def query_trajectories(start_date, end_date):
-    start_ts, end_ts = None, datetime.max.timestamp()
-    if start_date is not None:
-        start_ts = datetime.combine(start_date, datetime.min.time()).timestamp()
-
-    if end_date is not None:
-        end_ts = datetime.combine(end_date, datetime.max.time()).timestamp()
+def query_trajectories(start_date: str, end_date: str, tz: str):
+    
+    (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
     ts = esta.TimeSeries.get_aggregate_time_series()
-   
     entries = ts.find_entries(
         key_list=["analysis/recreated_location"],
         time_query=estt.TimeQuery("data.ts", start_ts, end_ts),

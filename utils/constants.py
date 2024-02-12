@@ -17,7 +17,11 @@ VALID_TRIP_COLS = [
     "data.end_local_dt",
     "data.end_fmt_time",
     "data.duration",
+    "data.duration_seconds",
     "data.distance",
+    "data.distance_km",
+    "data.distance_miles",
+    "data.distance_meters",
     "data.start_loc.coordinates",
     "data.end_loc.coordinates",
     "user_id"
