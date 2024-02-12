@@ -69,7 +69,6 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         data = db_utils.add_user_stats(data)
         columns = perm_utils.get_uuids_columns()
         has_perm = perm_utils.has_permission('data_uuids')
-         
     elif tab == 'tab-trips-datatable':
         data = store_trips["data"]
         columns = perm_utils.get_allowed_trip_columns()
@@ -115,7 +114,6 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
             ]),  
                 html.Div(id='subtabs-demographics-content')
             ]) 
-            
     elif tab == 'tab-trajectories-datatable':
         # Currently store_trajectories data is loaded only when the respective tab is selected
         #Here we query for trajectory data once "Trajectories" tab is selected
@@ -127,12 +125,14 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
             columns = list(data[0].keys())
             columns = perm_utils.get_trajectories_columns(columns)
             has_perm = perm_utils.has_permission('data_trajectories')
+            
     df = pd.DataFrame(data)
     if df.empty or not has_perm:
         return None
+        
     df = df.drop(columns=[col for col in df.columns if col not in columns])
+    
     return populate_datatable(df)
-
 
 # handle subtabs for demographic table when there are multiple surveys
 @callback(
