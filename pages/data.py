@@ -125,7 +125,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
             columns = list(data[0].keys())
             columns = perm_utils.get_trajectories_columns(columns)
             has_perm = perm_utils.has_permission('data_trajectories')
-    
+           
     df = pd.DataFrame(data)
     if df.empty or not has_perm:
         return None
