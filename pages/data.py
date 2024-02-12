@@ -125,13 +125,13 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
             columns = list(data[0].keys())
             columns = perm_utils.get_trajectories_columns(columns)
             has_perm = perm_utils.has_permission('data_trajectories')
-            
+
     df = pd.DataFrame(data)
     if df.empty or not has_perm:
         return None
-        
+
     df = df.drop(columns=[col for col in df.columns if col not in columns])
-    
+
     return populate_datatable(df)
 
 # handle subtabs for demographic table when there are multiple surveys
