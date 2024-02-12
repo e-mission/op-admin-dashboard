@@ -3,16 +3,17 @@ Note that the callback will trigger even if prevent_initial_call=True. This is b
 Since the dcc.Location component is not in the layout when navigating to this page, it triggers the callback.
 The workaround is to check if the input value is None.
 """
-from dash import dcc, html, Input, Output, callback, register_page, dash_table
-from datetime import date, timedelta
+from dash import dcc, html, Input, Output, callback, register_page, dash_table, State
 # Etc
 import logging
 import pandas as pd
 from dash.exceptions import PreventUpdate
 
+from utils import constants
 from utils import permissions as perm_utils
 from utils import db_utils
 from utils.db_utils import query_trajectories
+from utils.datetime_utils import iso_to_date_only
 register_page(__name__, path="/data")
 
 intro = """## Data"""
@@ -38,10 +39,10 @@ def clean_location_data(df):
         df['data.end_loc.coordinates'] = df['data.end_loc.coordinates'].apply(lambda x: f'({x[0]}, {x[1]})')
     return df
 
-def update_store_trajectories(start_date_obj,end_date_obj):
+def update_store_trajectories(start_date: str, end_date: str, tz: str):
     global store_trajectories
-    df = query_trajectories(start_date_obj,end_date_obj)
-    records = df.to_dict("records")   
+    df = query_trajectories(start_date, end_date, tz)
+    records = df.to_dict("records")
     store = {
         "data": records,
         "length": len(records),
@@ -59,9 +60,9 @@ def update_store_trajectories(start_date_obj,end_date_obj):
     Input('store-trajectories', 'data'),
     Input('date-picker', 'start_date'),
     Input('date-picker', 'end_date'),
-
+    Input('date-picker-timezone', 'value'),
 )
-def render_content(tab, store_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date):
+def render_content(tab, store_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date, timezone):
     data, columns, has_perm = None, [], False
     if tab == 'tab-uuids-datatable':
         data = store_uuids["data"]
@@ -75,6 +76,25 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
             col['label'] for col in perm_utils.get_allowed_named_trip_columns()
         )
         has_perm = perm_utils.has_permission('data_trips')
+        df = pd.DataFrame(data)
+        if df.empty or not has_perm:
+            return None
+
+        df = df.drop(columns=[col for col in df.columns if col not in columns])
+        df = clean_location_data(df)
+
+        trips_table = populate_datatable(df,'trips-table')
+        #Return an HTML Div containing a button (button-clicked) and the populated datatable
+        return html.Div([
+            html.Button(
+                'Display columns with raw units',
+                id='button-clicked', #identifier for the button
+                n_clicks=0, #initialize number of clicks to 0
+                style={'marginLeft':'5px'}
+            ),
+            trips_table, #populated trips table component
+        ]) 
+      
     elif tab == 'tab-demographics-datatable':
         data = store_demographics["data"]
         has_perm = perm_utils.has_permission('data_demographics')
@@ -97,14 +117,9 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
     elif tab == 'tab-trajectories-datatable':
         # Currently store_trajectories data is loaded only when the respective tab is selected
         #Here we query for trajectory data once "Trajectories" tab is selected
-        if not start_date or not end_date:
-            end_date_obj = date.today()
-            start_date_obj = end_date_obj - timedelta(days=7)
-        else:
-            start_date_obj = date.fromisoformat(start_date) 
-            end_date_obj = date.fromisoformat(end_date)
+        (start_date, end_date) = iso_to_date_only(start_date, end_date)
         if store_trajectories == {}:
-            store_trajectories = update_store_trajectories(start_date_obj,end_date_obj)
+            store_trajectories = update_store_trajectories(start_date, end_date, timezone)
         data = store_trajectories["data"]
         if data:
             columns = list(data[0].keys())
@@ -116,7 +131,6 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         return None
 
     df = df.drop(columns=[col for col in df.columns if col not in columns])
-    df = clean_location_data(df)
 
     return populate_datatable(df)
 
@@ -141,12 +155,31 @@ def update_sub_tab(tab, store_demographics):
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
         return populate_datatable(df)
-      
-def populate_datatable(df):
+
+
+@callback(
+    Output('trips-table', 'hidden_columns'), # Output hidden columns in the trips-table
+    Output('button-clicked', 'children'), #updates button label
+    Input('button-clicked', 'n_clicks'), #number of clicks on the button
+    State('button-clicked', 'children') #State representing the current label of button
+)
+#Controls visibility of columns in trips table  and updates the label of button based on the number of clicks.
+def update_dropdowns_trips(n_clicks, button_label):
+    if n_clicks % 2 == 0:
+        hidden_col = ["data.duration_seconds", "data.distance_meters","data.distance"]
+        button_label = 'Display columns with raw units'
+    else:
+        hidden_col = ["data.duration", "data.distance_miles", "data.distance_km", "data.distance"]
+        button_label = 'Display columns with humanzied units'
+    #return the list of hidden columns and the updated button label
+    return hidden_col, button_label
+
+
+def populate_datatable(df, table_id=''):
     if not isinstance(df, pd.DataFrame):
         raise PreventUpdate
     return dash_table.DataTable(
-        # id='my-table',
+        id= table_id,
         # columns=[{"name": i, "id": i} for i in df.columns],
         data=df.to_dict('records'),
         export_format="csv",
@@ -162,5 +195,6 @@ def populate_datatable(df):
             # 'width': '100px',
             # 'maxWidth': '100px',
         },
-        style_table={'overflowX': 'auto'}
+        style_table={'overflowX': 'auto'},
+        css=[{"selector":".show-hide", "rule":"display:none"}]
     )
