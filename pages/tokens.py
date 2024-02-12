@@ -9,6 +9,8 @@ from dash import dcc, html, Input, Output, callback, State, register_page, dash_
 
 from emission.storage.decorations.token_queries import insert_many_tokens
 import emission.core.get_database as edb
+import base64
+import io
 
 from utils.generate_qr_codes import saveAsQRCode
 from utils.generate_random_tokens import generateRandomTokensForProgram
@@ -21,16 +23,6 @@ if has_permission('token_generate'):
 intro = """## Tokens"""
 QRCODE_PATH = 'assets/qrcodes'
 
-def query_tokens():
-    query_result = edb.get_token_db().find({}, {"_id": 0})
-    df = pd.json_normalize(list(query_result))
-    return df
-
-def generate_qrcodes_for_all_tokens(): #generate QR codes for all tokens stored in the database
-    if not os.listdir(QRCODE_PATH):
-        df = query_tokens()
-        for _, row in df.iterrows():
-            saveAsQRCode(QRCODE_PATH, row['token'])
 
 layout = html.Div(
     [
@@ -118,8 +110,6 @@ layout = html.Div(
         }),
     ]
 )
-generate_qrcodes_for_all_tokens() #Generate QR codes for all tokens stored in database
-
 
 #Update the 'selected-rows' store based on changes in selected rows in 'tokens-table'
 @callback(
@@ -151,9 +141,6 @@ def delete_selected_rows(submit_clicks, current_data, selected_rows):
         #Delete tokens on rows to be deleted and remove associated QR codes
         for token_dict in delete_list:
             edb.get_token_db().delete_one(token_dict)
-            qrcode_file_path = os.path.join(QRCODE_PATH, f"{token_dict['token']}.png")
-            if os.path.exists(qrcode_file_path):
-                os.remove(qrcode_file_path)
         #Clear the list of selected rows
         selected_rows = []
     #Return updated data and selected rows for tokens-table
@@ -175,8 +162,6 @@ def generate_tokens(n_clicks, program, token_length, token_count, out_format, ch
         token_prefix = get_token_prefix() + program + ('_test' if 'test-token' in checklist else '')
         tokens = generateRandomTokensForProgram(token_prefix, token_length, token_count, out_format)
         insert_many_tokens(tokens)
-        for token in tokens:
-            saveAsQRCode(QRCODE_PATH, token)
     tokens_table = populate_datatable()
     return 0, tokens_table
 
@@ -186,16 +171,16 @@ def generate_tokens(n_clicks, program, token_length, token_count, out_format, ch
     Input('token-export', 'n_clicks'),
 )
 def export_tokens(n_clicks):
-    def zip_directory(bytes_io):
+    def zip_directory():
+        bytes_io = io.BytesIO()
         with zipfile.ZipFile(bytes_io, mode="w") as zf:
-            len_dir_path = len(QRCODE_PATH)
-            for root, _, files in os.walk(QRCODE_PATH):
-                for img in files:
-                    file_path = os.path.join(root, img)
-                    zf.write(file_path, file_path[len_dir_path:])
-
+            for token in edb.get_token_db().find({}, {"token": 1}):
+                img_bytes = saveAsQRCode(token['token'])
+                zf.writestr(f"{token['token']}.png", img_bytes.getvalue())
+        bytes_io.seek(0)
+        return bytes_io.read()
     if n_clicks > 0:
-        return dcc.send_bytes(zip_directory, "tokens.zip")
+        return dcc.send_bytes(zip_directory(), "tokens.zip")
 
 
 def populate_datatable():
@@ -203,7 +188,7 @@ def populate_datatable():
     if df.empty:
         return None
     df['id'] = df.index + 1
-    df['qr_code'] = "<img src='" + QRCODE_PATH + "/" + df['token'] + ".png' height='100px' />"
+    df['qr_code'] = df['token'].apply(lambda x: f"<img src='data:image/png;base64,{base64.b64encode(saveAsQRCode(x).read()).decode()}' height='100px' />")
     df = df.reindex(columns=['id', 'token', 'qr_code'])
     return dash_table.DataTable(
         id='tokens-table',
@@ -229,6 +214,9 @@ def populate_datatable():
         selected_rows=[], #Initialize selected_rows as an empty list
     )
 
-
+def query_tokens():
+    query_result = edb.get_token_db().find({}, {"_id": 0})
+    df = pd.json_normalize(list(query_result))
+    return df
 
 

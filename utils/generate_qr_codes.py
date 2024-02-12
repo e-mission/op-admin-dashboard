@@ -3,7 +3,8 @@ import argparse
 import base64
 import os
 import qrcode
-import PIL as pil
+# import PIL as pil
+import io
 
 def readRandomTokens(filename):
     tokens = []
@@ -11,14 +12,16 @@ def readRandomTokens(filename):
         tokens = [t.strip() for t in fp.readlines()]
     return tokens
 
-def saveAsQRCode(outdir, token):
-    qrcode_data = "nrelopenpath://login_token?token="+token
-    qrcode_img = qrcode.make(qrcode_data)
-    draw = pil.ImageDraw.Draw(qrcode_img)
-    draw.text((55,10), token, fill=0, align="center", anchor="mm")
-    qrcode_filename = outdir+"/"+token+".png"
-    qrcode_img.save(qrcode_filename)
-    return qrcode_filename
+def saveAsQRCode(token):
+    qrcode_data = f"nrelopenpath://login_token?token={token}"
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
+    qr.add_data(qrcode_data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+    return img_bytes
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog="generate_login_qr_codes")
