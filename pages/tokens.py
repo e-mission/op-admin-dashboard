@@ -21,8 +21,6 @@ if has_permission('token_generate'):
     register_page(__name__, path="/tokens")
 
 intro = """## Tokens"""
-QRCODE_PATH = 'assets/qrcodes'
-
 
 layout = html.Div(
     [
