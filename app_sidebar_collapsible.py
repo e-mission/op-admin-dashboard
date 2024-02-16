@@ -129,7 +129,7 @@ sidebar = html.Div(
 def make_controls():
   # according to docs, DatePickerRange will accept YYYY-MM-DD format
   today_date = arrow.now().format('YYYY-MM-DD')
-  last_week_date = arrow.now().shift(days=-7).format('YYYY-MM-DD')
+  last_week_date = arrow.now().shift(days=-70).format('YYYY-MM-DD')
   tomorrow_date = arrow.now().shift(days=1).format('YYYY-MM-DD')
   return html.Div([
       html.Div([

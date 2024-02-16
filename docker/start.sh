@@ -7,7 +7,7 @@ if [ -z ${DB_HOST} ] ; then
     local_host=`hostname -i`
     sed "s_localhost_${local_host}_" conf/storage/db.conf.sample > conf/storage/db.conf
 else
-    sed "s_localhost_${DB_HOST}_" conf/storage/db.conf.sample > conf/storage/db.conf
+    sed "s-localhost-${DB_HOST}-" conf/storage/db.conf.sample > conf/storage/db.conf
 fi
 
 # run the app
