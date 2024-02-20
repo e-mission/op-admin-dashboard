@@ -12,7 +12,7 @@ from dash.exceptions import PreventUpdate
 from utils import constants
 from utils import permissions as perm_utils
 from utils import db_utils
-from utils.db_utils import query_trajectories
+from utils.db_utils import df_to_filtered_records, query_trajectories
 from utils.datetime_utils import iso_to_date_only
 register_page(__name__, path="/data")
 
@@ -39,10 +39,10 @@ def clean_location_data(df):
         df['data.end_loc.coordinates'] = df['data.end_loc.coordinates'].apply(lambda x: f'({x[0]}, {x[1]})')
     return df
 
-def update_store_trajectories(start_date: str, end_date: str, tz: str):
+def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids):
     global store_trajectories
     df = query_trajectories(start_date, end_date, tz)
-    records = df.to_dict("records")
+    records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
     store = {
         "data": records,
         "length": len(records),
@@ -117,7 +117,7 @@ def render_content(tab, store_user_stats, store_trips, store_demographics, store
             data = list(data.values())[0]
             columns = list(data[0].keys())
         # for multiple survey, create subtabs for unique surveys
-        else:
+        elif len(data) > 1:
             #returns subtab only if has_perm is True
             if not has_perm:
                 return None
@@ -132,7 +132,7 @@ def render_content(tab, store_user_stats, store_trips, store_demographics, store
         #Here we query for trajectory data once "Trajectories" tab is selected
         (start_date, end_date) = iso_to_date_only(start_date, end_date)
         if store_trajectories == {}:
-            store_trajectories = update_store_trajectories(start_date, end_date, timezone)
+            store_trajectories = update_store_trajectories(start_date, end_date, timezone, store_excluded_uuids)
         data = store_trajectories["data"]
         if data:
             columns = list(data[0].keys())
