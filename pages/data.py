@@ -54,7 +54,7 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str):
 @callback(
     Output('tabs-content', 'children'),
     Input('tabs-datatable', 'value'),
-    Input('store-uuids', 'data'),
+    Input('store-user-stats', 'data'),
     Input('store-trips', 'data'),
     Input('store-demographics', 'data'),
     Input('store-trajectories', 'data'),
@@ -62,13 +62,26 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str):
     Input('date-picker', 'end_date'),
     Input('date-picker-timezone', 'value'),
 )
-def render_content(tab, store_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date, timezone):
+def render_content(tab, store_user_stats, store_trips, store_demographics, store_trajectories, start_date, end_date, timezone):
     data, columns, has_perm = None, [], False
     if tab == 'tab-uuids-datatable':
-        data = store_uuids["data"]
-        data = db_utils.add_user_stats(data)
+        data = store_user_stats["data"]
         columns = perm_utils.get_uuids_columns()
         has_perm = perm_utils.has_permission('data_uuids')
+        df = pd.DataFrame(data)
+        if df.empty or not has_perm:
+            return None
+        df = df.drop(columns=[col for col in df.columns if col not in columns])
+        uuids_table = populate_datatable(df, 'uuids-table')
+        #Return an HTML Div containing a button (load-data) and the populated datatable
+        return html.Div([
+            html.Button(
+                'Load more data',
+                id='load-data', #identifier for the button
+                n_clicks=0, #initialize number of clicks to 0
+            ),
+            uuids_table, #populated uuid table component
+        ]) 
     elif tab == 'tab-trips-datatable':
         data = store_trips["data"]
         columns = perm_utils.get_allowed_trip_columns()
@@ -174,6 +187,24 @@ def update_dropdowns_trips(n_clicks, button_label):
     #return the list of hidden columns and the updated button label
     return hidden_col, button_label
 
+
+@callback(
+    Output('uuids-table', 'data'), # Output all data in the uuid-table
+    Output('load-data', 'style'),
+    Input('load-data', 'n_clicks'), #number of clicks on the button
+    Input('store-uuids', 'data'),
+    State('uuids-table', 'data'), #State representing the current data on table
+    prevent_initial_call=True
+)
+#Load more uuid_table data if available.
+def update_uuids(n_clicks, store_uuids, current_data):
+    if n_clicks:
+        if len(current_data) >= 25:
+            additional_data = db_utils.add_user_stats(store_uuids["data"][25:])
+            current_data.extend(additional_data)
+            df = pd.DataFrame(current_data)
+            return df.to_dict('records'), {'display': 'none'}
+        return {}
 
 def populate_datatable(df, table_id=''):
     if not isinstance(df, pd.DataFrame):
