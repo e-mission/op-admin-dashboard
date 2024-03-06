@@ -16,6 +16,7 @@ from utils.generate_qr_codes import saveAsQRCode
 from utils.generate_random_tokens import generateRandomTokensForProgram
 from utils.permissions import get_token_prefix, has_permission
 
+token_deletion_enabled = os.getenv('TOKEN_DELETION_ENABLED', 'False').lower() == 'true'
 
 if has_permission('token_generate'):
     register_page(__name__, path="/tokens")
@@ -94,7 +95,7 @@ layout = html.Div(
         #Create a confirmation dialog provider with a button(Delete Selected tokens) triggering a confirmation message.
         #Allow users to delete tokens with users confirmation.
         dcc.ConfirmDialogProvider(
-            children=html.Button('Delete Selected Tokens', id = 'delete-button', style = {'float': 'left',  
+            children=html.Button('Delete Selected Tokens', id = 'delete-button', disabled = not (os.getenv('TOKEN_DELETION_ENABLED', 'False').lower() == 'true'), style = {'float': 'left',  
             'font-size': '14px', 'width': '160px', 'display': 'block', 'margin-bottom': '10px',
             'margin-right': '5px', 'height':'40px', 'verticalAlign': 'top', 'background-color': 'green',
             'color': 'white',}),
@@ -131,7 +132,7 @@ def update_selected_rows(selected_rows):
 #Delete selected rows based on confirmation
 def delete_selected_rows(submit_clicks, current_data, selected_rows):
     #Check if the delete confirmation button is clicked
-    if submit_clicks:
+    if submit_clicks and token_deletion_enabled:
         #Remove selected rows from the current data
         current_data = [row for i, row in enumerate(current_data) if i not in selected_rows]
         df = query_tokens()
