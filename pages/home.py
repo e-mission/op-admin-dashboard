@@ -64,7 +64,7 @@ def compute_sign_up_trend(uuid_df):
 
 
 def compute_trips_trend(trips_df, date_col):
-    trips_df[date_col] = pd.to_datetime(trips_df[date_col], utc=True)
+    trips_df[date_col] = pd.to_datetime(trips_df[date_col], utc=True, format='ISO8601')
     trips_df[date_col] = pd.DatetimeIndex(trips_df[date_col]).date
     res_df = (
         trips_df

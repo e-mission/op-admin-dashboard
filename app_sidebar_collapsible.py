@@ -24,7 +24,7 @@ if os.getenv('DASH_DEBUG_MODE', 'True').lower() == 'true':
     logging.basicConfig(level=logging.DEBUG)
 
 from utils.datetime_utils import iso_to_date_only
-from utils.db_utils import query_uuids, query_confirmed_trips, query_demographics
+from utils.db_utils import df_to_filtered_records, query_uuids, query_confirmed_trips, query_demographics
 from utils.permissions import has_permission
 import flask_talisman as flt
 
@@ -102,6 +102,15 @@ sidebar = html.Div(
                 ),
                 dbc.NavLink(
                     [
+                        html.I(className="fas fa-solid fa-hourglass me-2"),
+                        html.Span("Segment trip time"),
+                    ],
+                    href=dash.get_relative_path("/segment_trip_time"),
+                    active="exact",
+                    style={'display': 'block' if has_permission('segment_trip_time') else 'none'},
+                ),
+                dbc.NavLink(
+                    [
                         html.I(className="fas fa-solid fa-envelope-open-text me-2"),
                         html.Span("Push notification"),
                     ],
@@ -132,43 +141,65 @@ def make_controls():
   last_week_date = arrow.now().shift(days=-7).format('YYYY-MM-DD')
   tomorrow_date = arrow.now().shift(days=1).format('YYYY-MM-DD')
   return html.Div([
-        # Global Date Picker
-        dcc.DatePickerRange(
-            id='date-picker',
-            display_format='D MMM Y',
-            start_date=last_week_date,
-            end_date=today_date,
-            min_date_allowed='2010-1-1',
-            max_date_allowed=tomorrow_date,
-            initial_visible_month=today_date,
-        ),
-        html.Div([
-            html.Span('Query trips using: ', style={'margin-right': '10px'}),
-            dcc.Dropdown(
-                id='date-picker-timezone',
-                options=[
-                    {'label': 'UTC Time', 'value': 'utc'},
-                    {'label': 'My Local Timezone', 'value': 'local'},
-                    # {'label': 'Local Timezone of Trips', 'value': 'trips'},
-                ],
-                value='utc',
-                clearable=False,
-                searchable=False,
-                style={'width': '220px'},
-            ),
-        ],
-            style={'margin': '10px 10px 0 0',
-                   'display': 'flex',
-                   'justify-content': 'right',
-                   'align-items': 'center'},
+      html.Div([
+          # Global Date Picker
+          dcc.DatePickerRange(
+              id='date-picker',
+              display_format='D MMM Y',
+              start_date=last_week_date,
+              end_date=today_date,
+              min_date_allowed='2010-1-1',
+              max_date_allowed=tomorrow_date,
+              initial_visible_month=today_date,
+          ),
+          dbc.Button(
+              html.I(className="fas fa-bars", id='collapse-icon'),
+              outline=True,
+              id="collapse-button",
+              n_clicks=0,
+              style={'color': '#444', 'border': '1px solid #dbdbdb',
+                    'border-radius': '3px', 'margin-left': '3px'}
+          ),
+      ],
+          style={'display': 'flex'},
+      ),
+      dbc.Collapse([
+          html.Div([
+              html.Span('Query trips using: ', style={'margin-right': '10px'}),
+              dcc.Dropdown(
+                  id='date-picker-timezone',
+                  options=[
+                      {'label': 'UTC Time', 'value': 'utc'},
+                      {'label': 'My Local Timezone', 'value': 'local'},
+                      # {'label': 'Local Timezone of Trips', 'value': 'trips'},
+                  ],
+                  value='utc',
+                  clearable=False,
+                  searchable=False,
+                  style={'width': '180px'},
+              )]
+          ),
 
-        ),
-    ],
-        style={'margin': '10px 10px 0 0',
-               'display': 'flex',
-               'flex-direction': 'column',
-               'align-items': 'end'}
-    )
+          dcc.Checklist(
+              id='global-filters',
+              options=[
+                  {'label': 'Exclude "test" users',
+                   'value': 'exclude-test-users'},
+              ],
+              value=['exclude-test-users'],
+              style={'margin-top': '10px'},
+          ),
+      ],
+          id='collapse-filters',
+          is_open=False,
+          style={'padding': '5px 15px 10px', 'border': '1px solid #dbdbdb', 'border-top': '0'}
+      ),
+  ],
+      style={'margin': '10px 10px 0 auto',
+             'width': 'fit-content',
+             'display': 'flex',
+             'flex-direction': 'column'}
+  )
 
 page_content = dcc.Loading(
     type='default',
@@ -191,28 +222,59 @@ def make_layout(): return html.Div([
     dcc.Location(id='url', refresh=False),
     dcc.Store(id='store-trips', data={}),
     dcc.Store(id='store-uuids', data={}),
+    dcc.Store(id='store-excluded-uuids', data={}), # if 'test' users are excluded, a list of their uuids
     dcc.Store(id='store-demographics', data={}),
     dcc.Store(id='store-trajectories', data={}),
     html.Div(id='page-content', children=make_home_page()),
 ])
 app.layout = make_layout
 
+# make the 'filters' menu collapsible
+@app.callback(
+    Output("collapse-filters", "is_open"),
+    Output("collapse-icon", "className"),
+    [Input("collapse-button", "n_clicks")],
+    [Input("collapse-filters", "is_open")],
+)
+def toggle_collapse_filters(n, is_open):
+    if not n: return (is_open, "fas fa-bars")
+    if is_open:
+      return (False, "fas fa-bars")
+    else:
+      return (True, "fas fa-chevron-up")
+
 # Load data stores
 @app.callback(
     Output("store-uuids", "data"),
+    Output("store-excluded-uuids", "data"),
     Input('date-picker', 'start_date'),  # these are ISO strings
     Input('date-picker', 'end_date'),  # these are ISO strings
     Input('date-picker-timezone', 'value'),
+    Input('global-filters', 'value'),
 )
-def update_store_uuids(start_date, end_date, timezone):
+def update_store_uuids(start_date, end_date, timezone, filters):
     (start_date, end_date) = iso_to_date_only(start_date, end_date)
     dff = query_uuids(start_date, end_date, timezone)
-    records = dff.to_dict("records")
-    store = {
+    if dff.empty:
+        return {"data": [], "length": 0}, {"data": [], "length": 0}
+    # if 'exclude-testusers' filter is active,
+    # exclude any rows with user_token containing 'test', and
+    # output a list of those excluded UUIDs so other callbacks can exclude them too
+    if 'exclude-test-users' in filters:
+        excluded_uuids_list = dff[dff['user_token'].str.contains(
+            'test')]['user_id'].tolist()
+    else:
+        excluded_uuids_list = []
+    records = df_to_filtered_records(dff, 'user_id', excluded_uuids_list)
+    store_uuids = {
         "data": records,
         "length": len(records),
     }
-    return store
+    store_excluded_uuids = {
+        "data": excluded_uuids_list,
+        "length": len(excluded_uuids_list),
+    }
+    return store_uuids, store_excluded_uuids
 
 
 @app.callback(
@@ -220,12 +282,13 @@ def update_store_uuids(start_date, end_date, timezone):
     Input('date-picker', 'start_date'),
     Input('date-picker', 'end_date'),
     Input('date-picker-timezone', 'value'),
+    Input('store-excluded-uuids', 'data'),
 )
-def update_store_demographics(start_date, end_date, timezone):
-    df = query_demographics()
+def update_store_demographics(start_date, end_date, timezone, excluded_uuids):
+    dataframes = query_demographics()
     records = {}
-    for key, dataframe in df.items():
-        records[key] = dataframe.to_dict("records")
+    for key, df in dataframes.items():
+        records[key] = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
     store = {
         "data": records,
         "length": len(records),
@@ -233,16 +296,18 @@ def update_store_demographics(start_date, end_date, timezone):
     return store
 
 
+# Note: this triggers twice on load, not great with a slow db
 @app.callback(
     Output("store-trips", "data"),
     Input('date-picker', 'start_date'), # these are ISO strings
     Input('date-picker', 'end_date'), # these are ISO strings
     Input('date-picker-timezone', 'value'),
+    Input('store-excluded-uuids', 'data'),
 )
-def update_store_trips(start_date, end_date, timezone):
+def update_store_trips(start_date, end_date, timezone, excluded_uuids):
     (start_date, end_date) = iso_to_date_only(start_date, end_date)
     df = query_confirmed_trips(start_date, end_date, timezone)
-    records = df.to_dict("records")
+    records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
     # logging.debug("returning records %s" % records[0:2])
     store = {
         "data": records,

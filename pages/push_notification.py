@@ -190,12 +190,13 @@ def send_push_notification( send_n_clicks, log, query_spec, emails, uuids, log_o
             logs.append("dry run, skipping actual push")
             return "\n".join(logs), 0
         else:
+            response = pnu.send_visible_notification_to_users(
+                uuid_list,
+                title,
+                message,
+                survey_spec,
+            )
+            pnu.display_response(response)
+            logs.append("Push notification sent successfully")
             return "\n".join(logs), 0
-            # response = pnu.send_visible_notification_to_users(
-            #     uuid_list,
-            #     title,
-            #     message,
-            #     survey_spec,
-            # )
-            # pnu.display_response(response)
     return log, 0

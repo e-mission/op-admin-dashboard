@@ -57,19 +57,36 @@ def create_lines_map(trips_group_by_user_id, user_id_list):
     return fig
 
 
-def create_heatmap_fig(data):
+def get_map_coordinates(trips_group_by_user_mode, user_mode_list):
+    coordinates = {'lat': [], 'lon': [], 'color':[]}
+    for user_mode in user_mode_list:
+        color = trips_group_by_user_mode[user_mode]['color']
+        trips = trips_group_by_user_mode[user_mode]['trips']
+
+        for trip in trips:
+            coordinates['lon'].append(trip['start_coordinates'][0])
+            coordinates['lon'].append(trip['end_coordinates'][0])
+            coordinates['lat'].append(trip['start_coordinates'][1])
+            coordinates['lat'].append(trip['end_coordinates'][1])
+            coordinates['color'].extend([color,color])
+    return coordinates
+
+
+def create_heatmap_fig(coordinates):
     fig = go.Figure()
-    if len(data.get('lat', [])) > 0:
+    if len(coordinates.get('lat', [])) > 0:
         fig.add_trace(
             go.Densitymapbox(
-                lon=data['lon'],
-                lat=data['lat'],
+                lon=coordinates['lon'],
+                lat=coordinates['lat'],
+                name = '',
+                
             )
         )
         fig.update_layout(
             mapbox_style='open-street-map',
-            mapbox_center_lon=data['lon'][0],
-            mapbox_center_lat=data['lat'][0],
+            mapbox_center_lon=coordinates['lon'][0],
+            mapbox_center_lat=coordinates['lat'][0],
             mapbox_zoom=11,
             margin={"r": 0, "t": 30, "l": 0, "b": 0},
             height=650,
@@ -77,25 +94,25 @@ def create_heatmap_fig(data):
     return fig
 
 
-def create_bubble_fig(data):
+def create_bubble_fig(coordinates):
     fig = go.Figure()
-    if len(data.get('lon', [])) > 0:
+    if len(coordinates.get('lon', [])) > 0:
         fig.add_trace(
             go.Scattermapbox(
-                lat=data['lat'],
-                lon=data['lon'],
+                lat=coordinates['lat'],
+                lon=coordinates['lon'],
                 mode='markers',
                 marker=go.scattermapbox.Marker(
                     size=9,
-                    color='royalblue',
+                    color=coordinates['color'],
                 ),
             )
         )
         fig.update_layout(
             autosize=True,
             mapbox_style='open-street-map',
-            mapbox_center_lon=data['lon'][0],
-            mapbox_center_lat=data['lat'][0],
+            mapbox_center_lon=coordinates['lon'][0],
+            mapbox_center_lat=coordinates['lat'][0],
             mapbox_zoom=11,
             mapbox_bearing=0,
             margin={'r': 0, 't': 30, 'l': 0, 'b': 0},
@@ -110,6 +127,14 @@ def get_trips_group_by_user_id(trips_data):
     if not trips_df.empty:
         trips_group_by_user_id = trips_df.groupby('user_id')
     return trips_group_by_user_id
+
+def get_trips_group_by_user_mode(trips_data):
+    trips_group_by_user_mode = None
+    trips_df = pd.DataFrame(trips_data['data'])
+    if not trips_df.empty:
+        trips_df['data.user_input.mode_confirm'] = trips_df['data.user_input.mode_confirm'].fillna('Unknown')
+        trips_group_by_user_mode = trips_df.groupby('data.user_input.mode_confirm')
+    return trips_group_by_user_mode
 
 def create_single_option(value, color):
     return {
@@ -148,6 +173,15 @@ def create_user_emails_options(trips_group_by_user_id):
             options.append(create_single_option(user_email, color))
     return options, user_emails
 
+def create_user_modes_options(trips_group_by_user_mode):
+    options = list()
+    user_modes = set()
+    for user_mode in trips_group_by_user_mode:
+        color = trips_group_by_user_mode[user_mode]['color']
+        user_modes.add(user_mode)
+        options.append(create_single_option(user_mode, color))
+    return options, user_modes
+
 map_type_options = []
 if has_permission('map_heatmap'):
     map_type_options.append({'label': 'Density Heatmap', 'value': 'heatmap'})
@@ -182,7 +216,11 @@ layout = html.Div(
             dbc.Col([
                 html.Label('User Emails'),
                 dcc.Dropdown(id='user-email-dropdown', multi=True),
-            ], style={'display': 'block' if has_permission('options_emails') else 'none'})
+            ], style={'display': 'block' if has_permission('options_emails') else 'none'}),
+            dbc.Col([
+                html.Label('Modes'),
+                dcc.Dropdown(id='user-mode-dropdown', multi=True),
+            ], style={'display': 'block'})
         ]),
 
         dbc.Row(
@@ -198,7 +236,7 @@ layout = html.Div(
     Input('user-id-dropdown', 'value'),
 )
 def update_user_ids_options(trips_data, selected_user_ids):
-    user_ids_options, user_ids = create_user_ids_options(trips_data['users_data'])
+    user_ids_options, user_ids = create_user_ids_options(trips_data['users_data_by_user_id'])
     if selected_user_ids is not None:
         selected_user_ids = [user_id for user_id in selected_user_ids if user_id in user_ids]
     return user_ids_options, selected_user_ids
@@ -211,31 +249,46 @@ def update_user_ids_options(trips_data, selected_user_ids):
     Input('user-email-dropdown', 'value'),
 )
 def update_user_emails_options(trips_data, selected_user_emails):
-    user_emails_options, user_emails = create_user_emails_options(trips_data['users_data'])
+    user_emails_options, user_emails = create_user_emails_options(trips_data['users_data_by_user_id'])
     if selected_user_emails is not None:
         selected_user_emails = [user_email for user_email in selected_user_emails if user_email in user_emails]
     return user_emails_options, selected_user_emails
 
+@callback(
+    Output('user-mode-dropdown', 'options'),
+    Output('user-mode-dropdown', 'value'),
+    Input('store-trips-map', 'data'),
+    Input('user-mode-dropdown', 'value'),
+)
+def update_user_modes_options(trips_data, selected_user_modes):
+    user_modes_options, user_modes = create_user_modes_options(trips_data['users_data_by_user_mode'])
+    if selected_user_modes is not None:
+        selected_user_modes = [mode_confirm for mode_confirm in selected_user_modes if mode_confirm in user_modes]
+    return user_modes_options, selected_user_modes
 
 @callback(
     Output('trip-map', 'figure'),
     Input('map-type-dropdown', 'value'),
     Input('user-id-dropdown', 'value'),
     Input('user-email-dropdown', 'value'),
+    Input('user-mode-dropdown', 'value'),
     State('store-trips-map', 'data'),
 )
-def update_output(map_type, selected_user_ids, selected_user_emails, trips_data):
+def update_output(map_type, selected_user_ids, selected_user_emails, selected_user_modes, trips_data):
     user_ids = set(selected_user_ids) if selected_user_ids is not None else set()
+    user_modes=set(selected_user_modes) if selected_user_modes is not None else set()
+    coordinates = get_map_coordinates(trips_data.get('users_data_by_user_mode', {}), user_modes)
     if selected_user_emails is not None:
         for user_email in selected_user_emails:
             user_ids.add(str(ecwu.User.fromEmail(user_email).uuid))
-
     if map_type == 'lines':
-        return create_lines_map(trips_data.get('users_data', {}), user_ids)
+        if selected_user_modes:
+            return create_lines_map(trips_data.get('users_data_by_user_mode', {}), user_modes)
+        return create_lines_map(trips_data.get('users_data_by_user_id', {}), user_ids)
     elif map_type == 'heatmap':
-        return create_heatmap_fig(trips_data.get('coordinates', {}))
+        return create_heatmap_fig(coordinates)
     elif map_type == 'bubble':
-        return create_bubble_fig(trips_data.get('coordinates', {}))
+        return create_bubble_fig(coordinates)
     else:
         return go.Figure()
 
@@ -244,12 +297,29 @@ def update_output(map_type, selected_user_ids, selected_user_emails, trips_data)
     Output('user-id-dropdown', 'disabled'),
     Output('user-email-dropdown', 'disabled'),
     Input('map-type-dropdown', 'value'),
+    Input('user-mode-dropdown', 'value'),
 )
-def control_user_dropdowns(map_type):
+def control_user_dropdowns(map_type,selected_user_modes):
     disabled = True
     if map_type == 'lines':
         disabled = False
+        if selected_user_modes:
+            disabled = True
     return disabled, disabled
+
+
+def process_trips_group(trips_group):
+    users_data = dict()
+    #processes a group of trips, assigns color to each group and stores the processed data in a dictionary
+    if trips_group:
+        keys = list(trips_group)
+        n = len(keys) % 360
+        k = 359 // (n - 1) if n > 1 else 0
+        for ind, key in enumerate(trips_group.groups.keys()):
+            color = f'hsl({ind * k}, 100%, 50%)'
+            trips = trips_group.get_group(key).to_dict("records")
+            users_data[key] = {'color': color, 'trips': trips}  
+    return users_data
 
 
 @callback(
@@ -258,19 +328,9 @@ def control_user_dropdowns(map_type):
 )
 def store_trips_map_data(trips_data):
     trips_group_by_user_id = get_trips_group_by_user_id(trips_data)
-    users_data = dict()
-    coordinates = {'lat': [], 'lon': []}
-    if trips_group_by_user_id:
-        user_ids = list(trips_group_by_user_id)
-        n = len(user_ids) % 360
-        k = 359 // (n - 1) if n > 1 else 0
-        for ind, user_id in enumerate(trips_group_by_user_id.groups.keys()):
-            color = f'hsl({ind * k}, 100%, 50%)'
-            trips = trips_group_by_user_id.get_group(user_id).sort_values('trip_start_time_str').to_dict("records")
-            users_data[user_id] = {'color': color, 'trips': trips}
-            for trip in trips:
-                coordinates['lon'].append(trip['start_coordinates'][0])
-                coordinates['lon'].append(trip['end_coordinates'][0])
-                coordinates['lat'].append(trip['start_coordinates'][1])
-                coordinates['lat'].append(trip['end_coordinates'][1])
-    return {'users_data': users_data, 'coordinates': coordinates}
+    users_data_by_user_id = process_trips_group(trips_group_by_user_id)
+  
+    trips_group_by_user_mode = get_trips_group_by_user_mode(trips_data)
+    users_data_by_user_mode = process_trips_group(trips_group_by_user_mode)
+    
+    return {'users_data_by_user_id':users_data_by_user_id, 'users_data_by_user_mode':users_data_by_user_mode}
