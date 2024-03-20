@@ -41,7 +41,6 @@ COPY data ./
 
 # open listening port, this may be overridden in docker-compose file
 EXPOSE ${SERVER_PORT}
-EXPOSE ${DASH_SERVER_PORT}
 
 # run the dashboard
 WORKDIR /usr/src/app/dashboard_setup
