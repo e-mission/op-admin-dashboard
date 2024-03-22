@@ -8,7 +8,7 @@ dash_extensions==1.0.12
 #dashboard_setup/nrel_dash_components-0.0.1.tar.gz # for docker-compose
 pylint==2.17.2
 qrcode==7.4.2
-pillow==10.0.1
+pillow==10.2.0
 requests==2.31.0
 python-jose==3.3.0
 flask==3.0.2
@@ -16,3 +16,4 @@ flask-talisman==1.1.0
 dash_auth==2.0.0
 arrow==1.3.0
 pygwalker==0.4.6
+dash-leaflet==1.0.7

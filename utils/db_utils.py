@@ -7,9 +7,12 @@ import pymongo
 
 import emission.core.get_database as edb
 import emission.storage.timeseries.abstract_timeseries as esta
+import emission.storage.timeseries.aggregate_timeseries as estag
 import emission.storage.timeseries.timequery as estt
 import emission.core.wrapper.motionactivity as ecwm
-
+import emission.storage.timeseries.geoquery as estg
+import emission.storage.decorations.section_queries as esds
+import emission.core.wrapper.modeprediction as ecwm
 
 from utils import constants
 from utils import permissions as perm_utils
@@ -222,3 +225,52 @@ def add_user_stats(user_data):
                 user['last_call'] = arrow.get(last_call).format(time_format)
 
     return user_data
+
+def query_segments_crossing_endpoints(poly_region_start, poly_region_end, start_date: str, end_date: str, tz: str, excluded_uuids: list[str]):
+    (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
+    tq = estt.TimeQuery("data.ts", start_ts, end_ts)
+    not_excluded_uuid_query = {'user_id': {'$nin': [UUID(uuid) for uuid in excluded_uuids]}}
+    agg_ts = estag.AggregateTimeSeries().get_aggregate_time_series()
+
+    locs_matching_start = agg_ts.get_data_df(
+                              "analysis/recreated_location",
+                              geo_query = estg.GeoQuery(['data.loc'], poly_region_start),
+                              time_query = tq,
+                              extra_query_list=[not_excluded_uuid_query]
+                          )
+    locs_matching_start = locs_matching_start.drop_duplicates(subset=['section'])
+    if locs_matching_start.empty:
+        return locs_matching_start
+    
+    locs_matching_end = agg_ts.get_data_df(
+                            "analysis/recreated_location",
+                            geo_query = estg.GeoQuery(['data.loc'], poly_region_end),
+                            time_query = tq,
+                            extra_query_list=[not_excluded_uuid_query]
+                        )
+    locs_matching_end = locs_matching_end.drop_duplicates(subset=['section'])
+    if locs_matching_end.empty:
+        return locs_matching_end
+    
+    merged = locs_matching_start.merge(locs_matching_end, how='outer', on=['section'])
+    filtered = merged.loc[merged['idx_x']<merged['idx_y']].copy()
+    filtered['duration'] = filtered['ts_y'] - filtered['ts_x']
+    filtered['mode'] = filtered['mode_x']
+    filtered['start_fmt_time'] = filtered['fmt_time_x']
+    filtered['end_fmt_time'] = filtered['fmt_time_y']
+    filtered['user_id'] = filtered['user_id_y']
+    
+    number_user_seen = filtered.user_id_x.nunique()
+
+    if perm_utils.permissions.get("segment_trip_time_min_users", 0) <= number_user_seen:
+        return filtered
+    return pd.DataFrame.from_dict([])
+
+# The following query can be called multiple times, let's open db only once
+analysis_timeseries_db = edb.get_analysis_timeseries_db()
+
+# Fetches sensed_mode for each section in a list
+# sections format example: [{'section': ObjectId('648d02b227fd2bb6635414a0'), 'user_id': UUID('6d7edf29-8b3f-451b-8d66-984cb8dd8906')}]
+def query_inferred_sections_modes(sections):
+    return esds.cleaned2inferred_section_list(sections)
+
