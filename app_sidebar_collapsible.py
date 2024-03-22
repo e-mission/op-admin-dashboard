@@ -24,7 +24,7 @@ if os.getenv('DASH_DEBUG_MODE', 'True').lower() == 'true':
     logging.basicConfig(level=logging.DEBUG)
 
 from utils.datetime_utils import iso_to_date_only
-from utils.db_utils import df_to_filtered_records, query_uuids, query_confirmed_trips, query_demographics
+from utils.db_utils import df_to_filtered_records, query_uuids, query_confirmed_trips, query_demographics, add_user_stats
 from utils.permissions import has_permission
 import flask_talisman as flt
 
@@ -85,6 +85,14 @@ sidebar = html.Div(
                 ),
                 dbc.NavLink(
                     [
+                        html.I(className="fas fa-sharp fa-solid fa-chart-line me-2"),
+                        html.Span("Charts"),
+                    ],
+                    href=dash.get_relative_path("/charts"),
+                    active="exact",
+                ),
+                dbc.NavLink(
+                    [
                         html.I(className="fas fa-solid fa-right-to-bracket me-2"),
                         html.Span("Tokens"),
                     ],
@@ -129,7 +137,7 @@ sidebar = html.Div(
 def make_controls():
   # according to docs, DatePickerRange will accept YYYY-MM-DD format
   today_date = arrow.now().format('YYYY-MM-DD')
-  last_week_date = arrow.now().shift(days=-7).format('YYYY-MM-DD')
+  last_week_date = arrow.now().shift(days=-120).format('YYYY-MM-DD')
   tomorrow_date = arrow.now().shift(days=1).format('YYYY-MM-DD')
   return html.Div([
       html.Div([
@@ -213,6 +221,7 @@ def make_layout(): return html.Div([
     dcc.Location(id='url', refresh=False),
     dcc.Store(id='store-trips', data={}),
     dcc.Store(id='store-uuids', data={}),
+    dcc.Store(id='store-user-stats', data={}),
     dcc.Store(id='store-excluded-uuids', data={}), # if 'test' users are excluded, a list of their uuids
     dcc.Store(id='store-demographics', data={}),
     dcc.Store(id='store-trajectories', data={}),
@@ -266,6 +275,20 @@ def update_store_uuids(start_date, end_date, timezone, filters):
         "length": len(excluded_uuids_list),
     }
     return store_uuids, store_excluded_uuids
+
+# Load data stores
+@app.callback(
+    Output("store-user-stats", "data"),
+    Input('store-uuids', "data"),  
+)
+def update_user_stats(store_uuids):
+    data = store_uuids["data"][:25]
+    records = add_user_stats(data)
+    store = {
+        "data": records,
+        "length": len(records),
+    }
+    return store
 
 
 @app.callback(
@@ -331,11 +354,12 @@ extra_csp_url = [
     "https://cdn.jsdelivr.net",
     "https://use.fontawesome.com",
     "https://www.nrel.gov",
+    "https://unpkg.com",
     "data:",
     "blob:"
 ]
 csp = {
-       'default-src': ["'self'", "'unsafe-inline'"] + extra_csp_url
+       'default-src': ["'self'", "'unsafe-eval'", "'unsafe-inline'"] + extra_csp_url,
       }
 
 flt.Talisman(server, content_security_policy=csp, strict_transport_security=False)
