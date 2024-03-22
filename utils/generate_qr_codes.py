@@ -1,9 +1,7 @@
 import secrets
 import argparse
-import base64
 import os
 import qrcode
-# import PIL as pil
 import io
 
 def readRandomTokens(filename):
