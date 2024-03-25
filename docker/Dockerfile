@@ -17,10 +17,10 @@ COPY ./pages ./
 WORKDIR /usr/src/app/utils
 COPY ./utils ./
 WORKDIR /usr/src/app
-COPY app.py config.py app_sidebar_collapsible.py assets globals.py globalsUpdater.py Procfile ./
+COPY app.py config.py app_sidebar_collapsible.py globals.py globalsUpdater.py Procfile ./
 
 WORKDIR /usr/src/app/assets
-COPY assets/style.css ./
+COPY assets/ ./
 RUN mkdir qrcodes
 
 # copy over test data
