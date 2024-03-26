@@ -274,6 +274,7 @@ def update_user_modes_options(trips_data, selected_user_modes):
     if selected_user_modes is not None:
         selected_user_modes = [mode_confirm for mode_confirm in selected_user_modes if mode_confirm in user_modes]
     
+    # Disable the 'mode' button if no user_modes_options have 0 values
     return user_modes_options, selected_user_modes, len(user_modes_options) == 0
 
 @callback(
