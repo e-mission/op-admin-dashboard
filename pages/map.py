@@ -22,7 +22,6 @@ register_page(__name__, path="/map")
 
 intro = """## Map"""
 
-
 def create_lines_map(trips_group_by_user_id, user_id_list):
     start_lon, start_lat = 0, 0
     traces = []
@@ -236,7 +235,10 @@ layout = html.Div(
     Input('user-id-dropdown', 'value'),
 )
 def update_user_ids_options(trips_data, selected_user_ids):
-    user_ids_options, user_ids = create_user_ids_options(trips_data['users_data_by_user_id'])
+    user_ids_options, user_ids = list(), set()
+    if 'users_data_by_user_id' in trips_data:
+        user_ids_options, user_ids = create_user_ids_options(trips_data['users_data_by_user_id'])
+
     if selected_user_ids is not None:
         selected_user_ids = [user_id for user_id in selected_user_ids if user_id in user_ids]
     return user_ids_options, selected_user_ids
@@ -249,7 +251,10 @@ def update_user_ids_options(trips_data, selected_user_ids):
     Input('user-email-dropdown', 'value'),
 )
 def update_user_emails_options(trips_data, selected_user_emails):
-    user_emails_options, user_emails = create_user_emails_options(trips_data['users_data_by_user_id'])
+    user_emails_options, user_emails = list(), set()
+    if 'users_data_by_user_id' in trips_data:
+        user_emails_options, user_emails = create_user_emails_options(trips_data['users_data_by_user_id'])
+
     if selected_user_emails is not None:
         selected_user_emails = [user_email for user_email in selected_user_emails if user_email in user_emails]
     return user_emails_options, selected_user_emails
@@ -257,14 +262,19 @@ def update_user_emails_options(trips_data, selected_user_emails):
 @callback(
     Output('user-mode-dropdown', 'options'),
     Output('user-mode-dropdown', 'value'),
+    Output('user-mode-dropdown', 'disabled'),
     Input('store-trips-map', 'data'),
     Input('user-mode-dropdown', 'value'),
 )
 def update_user_modes_options(trips_data, selected_user_modes):
-    user_modes_options, user_modes = create_user_modes_options(trips_data['users_data_by_user_mode'])
+    user_modes_options, user_modes = list(), set()
+    if 'users_data_by_user_id' in trips_data:
+        user_modes_options, user_modes = create_user_modes_options(trips_data['users_data_by_user_mode'])
+
     if selected_user_modes is not None:
         selected_user_modes = [mode_confirm for mode_confirm in selected_user_modes if mode_confirm in user_modes]
-    return user_modes_options, selected_user_modes
+    
+    return user_modes_options, selected_user_modes, len(user_modes_options) == 0
 
 @callback(
     Output('trip-map', 'figure'),
@@ -278,6 +288,7 @@ def update_output(map_type, selected_user_ids, selected_user_emails, selected_us
     user_ids = set(selected_user_ids) if selected_user_ids is not None else set()
     user_modes=set(selected_user_modes) if selected_user_modes is not None else set()
     coordinates = get_map_coordinates(trips_data.get('users_data_by_user_mode', {}), user_modes)
+
     if selected_user_emails is not None:
         for user_email in selected_user_emails:
             user_ids.add(str(ecwu.User.fromEmail(user_email).uuid))
