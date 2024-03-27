@@ -238,9 +238,7 @@ layout = html.Div(
     Input('user-id-dropdown', 'value'),
 )
 def update_user_ids_options(trips_data, selected_user_ids):
-    user_ids_options, user_ids = list(), set()
-    if 'users_data_by_user_id' in trips_data:
-        user_ids_options, user_ids = create_user_ids_options(trips_data['users_data_by_user_id'])
+    user_ids_options, user_ids = create_user_ids_options(trips_data['users_data_by_user_id'])
 
     if selected_user_ids is not None:
         selected_user_ids = [user_id for user_id in selected_user_ids if user_id in user_ids]
@@ -254,9 +252,7 @@ def update_user_ids_options(trips_data, selected_user_ids):
     Input('user-email-dropdown', 'value'),
 )
 def update_user_emails_options(trips_data, selected_user_emails):
-    user_emails_options, user_emails = list(), set()
-    if 'users_data_by_user_id' in trips_data:
-        user_emails_options, user_emails = create_user_emails_options(trips_data['users_data_by_user_id'])
+    user_emails_options, user_emails = create_user_emails_options(trips_data['users_data_by_user_id'])
 
     if selected_user_emails is not None:
         selected_user_emails = [user_email for user_email in selected_user_emails if user_email in user_emails]
@@ -270,9 +266,7 @@ def update_user_emails_options(trips_data, selected_user_emails):
     Input('user-mode-dropdown', 'value'),
 )
 def update_user_modes_options(trips_data, selected_user_modes):
-    user_modes_options, user_modes = list(), set()
-    if 'users_data_by_user_id' in trips_data:
-        user_modes_options, user_modes = create_user_modes_options(trips_data['users_data_by_user_mode'])
+    user_modes_options, user_modes = create_user_modes_options(trips_data['users_data_by_user_mode'])
 
     if selected_user_modes is not None:
         selected_user_modes = [mode_confirm for mode_confirm in selected_user_modes if mode_confirm in user_modes]
