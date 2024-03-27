@@ -22,6 +22,7 @@ register_page(__name__, path="/map")
 
 intro = """## Map"""
 
+
 def create_lines_map(trips_group_by_user_id, user_id_list):
     start_lon, start_lat = 0, 0
     traces = []
