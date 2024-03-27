@@ -283,7 +283,6 @@ def update_output(map_type, selected_user_ids, selected_user_emails, selected_us
     user_ids = set(selected_user_ids) if selected_user_ids is not None else set()
     user_modes=set(selected_user_modes) if selected_user_modes is not None else set()
     coordinates = get_map_coordinates(trips_data.get('users_data_by_user_mode', {}), user_modes)
-
     if selected_user_emails is not None:
         for user_email in selected_user_emails:
             user_ids.add(str(ecwu.User.fromEmail(user_email).uuid))
