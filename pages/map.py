@@ -133,7 +133,7 @@ def get_trips_group_by_user_mode(trips_data):
     if not trips_df.empty:
         if 'data.user_input.mode_confirm' not in trips_df.columns:
             trips_df['data.user_input.mode_confirm'] = None
-        trips_df['data.user_input.mode_confirm'] = trips_df['data.user_input.mode_confirm'].fillna('Unlabeld')
+        trips_df['data.user_input.mode_confirm'] = trips_df['data.user_input.mode_confirm'].fillna('Unlabeled')
         trips_group_by_user_mode = trips_df.groupby('data.user_input.mode_confirm')
     return trips_group_by_user_mode
 
