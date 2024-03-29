@@ -28,7 +28,6 @@ COPY ./pages ./
 WORKDIR /usr/src/app/utils
 COPY ./utils ./
 WORKDIR /usr/src/app
-COPY config-fake.py ./config.py
 COPY app.py app_sidebar_collapsible.py globals.py globalsUpdater.py Procfile ./
 
 WORKDIR /usr/src/app/assets
