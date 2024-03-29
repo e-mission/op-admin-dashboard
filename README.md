@@ -87,6 +87,11 @@ that is displayed on the Data page.
 - `map_bubble`: User can view the bubble map in the Map page.
 - `map_trip_lines`: User can view the trip lines map in the Map page.
 
+### Segment Trip Time Page
+- `segment_trip_time`: User can view this page. (default `true`)
+- `segment_trip_time_full_trips`: User can see the table containing non-aggregated data (default `true`)
+- `segment_trip_time_min_users`: Minimal number of distinct users in data required to display anything (value is a number, default `0`).
+
 ### Push Notification Page
 - `push_send`: User can send push notifications in the Push Notification page.
 

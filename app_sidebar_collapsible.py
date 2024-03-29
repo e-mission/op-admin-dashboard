@@ -102,6 +102,15 @@ sidebar = html.Div(
                 ),
                 dbc.NavLink(
                     [
+                        html.I(className="fas fa-solid fa-hourglass me-2"),
+                        html.Span("Segment trip time"),
+                    ],
+                    href=dash.get_relative_path("/segment_trip_time"),
+                    active="exact",
+                    style={'display': 'block' if has_permission('segment_trip_time') else 'none'},
+                ),
+                dbc.NavLink(
+                    [
                         html.I(className="fas fa-solid fa-envelope-open-text me-2"),
                         html.Span("Push notification"),
                     ],
@@ -287,6 +296,7 @@ def update_store_demographics(start_date, end_date, timezone, excluded_uuids):
     return store
 
 
+# Note: this triggers twice on load, not great with a slow db
 @app.callback(
     Output("store-trips", "data"),
     Input('date-picker', 'start_date'), # these are ISO strings

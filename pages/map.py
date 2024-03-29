@@ -130,9 +130,11 @@ def get_trips_group_by_user_id(trips_data):
 
 def get_trips_group_by_user_mode(trips_data):
     trips_group_by_user_mode = None
-    trips_df = pd.DataFrame(trips_data['data'])
+    trips_df = pd.DataFrame(trips_data.get('data'))
     if not trips_df.empty:
-        trips_df['data.user_input.mode_confirm'] = trips_df['data.user_input.mode_confirm'].fillna('Unknown')
+        if 'data.user_input.mode_confirm' not in trips_df.columns:
+            trips_df['data.user_input.mode_confirm'] = None
+        trips_df['data.user_input.mode_confirm'] = trips_df['data.user_input.mode_confirm'].fillna('Unlabeled')
         trips_group_by_user_mode = trips_df.groupby('data.user_input.mode_confirm')
     return trips_group_by_user_mode
 
@@ -222,10 +224,7 @@ layout = html.Div(
                 dcc.Dropdown(id='user-mode-dropdown', multi=True),
             ], style={'display': 'block'})
         ]),
-
-        dbc.Row(
-            dcc.Graph(id="trip-map")
-        ),
+        dbc.Row(id="trip-map-row")
     ]
 )
 
@@ -257,6 +256,7 @@ def update_user_emails_options(trips_data, selected_user_emails):
 @callback(
     Output('user-mode-dropdown', 'options'),
     Output('user-mode-dropdown', 'value'),
+    Output('user-mode-dropdown', 'disabled'),
     Input('store-trips-map', 'data'),
     Input('user-mode-dropdown', 'value'),
 )
@@ -264,10 +264,12 @@ def update_user_modes_options(trips_data, selected_user_modes):
     user_modes_options, user_modes = create_user_modes_options(trips_data['users_data_by_user_mode'])
     if selected_user_modes is not None:
         selected_user_modes = [mode_confirm for mode_confirm in selected_user_modes if mode_confirm in user_modes]
-    return user_modes_options, selected_user_modes
+    
+    # Disable the 'mode' button if no user_modes_options have 0 values
+    return user_modes_options, selected_user_modes, len(user_modes_options) == 0
 
 @callback(
-    Output('trip-map', 'figure'),
+    Output('trip-map-row', 'children'),
     Input('map-type-dropdown', 'value'),
     Input('user-id-dropdown', 'value'),
     Input('user-email-dropdown', 'value'),
@@ -275,6 +277,9 @@ def update_user_modes_options(trips_data, selected_user_modes):
     State('store-trips-map', 'data'),
 )
 def update_output(map_type, selected_user_ids, selected_user_emails, selected_user_modes, trips_data):
+    if not trips_data['users_data_by_user_id'] and not trips_data['users_data_by_user_mode']:
+        return html.Div("No trip data available for the selected date", id="no-trip-text", style={'font-size': 20, 'margin-top': 20})
+    fig = None
     user_ids = set(selected_user_ids) if selected_user_ids is not None else set()
     user_modes=set(selected_user_modes) if selected_user_modes is not None else set()
     coordinates = get_map_coordinates(trips_data.get('users_data_by_user_mode', {}), user_modes)
@@ -283,14 +288,16 @@ def update_output(map_type, selected_user_ids, selected_user_emails, selected_us
             user_ids.add(str(ecwu.User.fromEmail(user_email).uuid))
     if map_type == 'lines':
         if selected_user_modes:
-            return create_lines_map(trips_data.get('users_data_by_user_mode', {}), user_modes)
-        return create_lines_map(trips_data.get('users_data_by_user_id', {}), user_ids)
+            fig = create_lines_map(trips_data.get('users_data_by_user_mode', {}), user_modes)
+        else:
+            fig = create_lines_map(trips_data.get('users_data_by_user_id', {}), user_ids)
     elif map_type == 'heatmap':
-        return create_heatmap_fig(coordinates)
+        fig = create_heatmap_fig(coordinates)
     elif map_type == 'bubble':
-        return create_bubble_fig(coordinates)
+        fig = create_bubble_fig(coordinates)
     else:
-        return go.Figure()
+        fig = go.Figure()
+    return dcc.Graph(figure=fig)
 
 
 @callback(
@@ -323,10 +330,13 @@ def process_trips_group(trips_group):
     Input('store-trips', 'data'),
 )
 def store_trips_map_data(trips_data):
+    if not trips_data['data']:
+        return {'users_data_by_user_id': {}, 'users_data_by_user_mode': {}}
+    
     trips_group_by_user_id = get_trips_group_by_user_id(trips_data)
     users_data_by_user_id = process_trips_group(trips_group_by_user_id)
   
     trips_group_by_user_mode = get_trips_group_by_user_mode(trips_data)
     users_data_by_user_mode = process_trips_group(trips_group_by_user_mode)
-    
+
     return {'users_data_by_user_id':users_data_by_user_id, 'users_data_by_user_mode':users_data_by_user_mode}

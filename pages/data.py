@@ -40,14 +40,12 @@ def clean_location_data(df):
     return df
 
 def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids):
-    global store_trajectories
     df = query_trajectories(start_date, end_date, tz)
     records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
     store = {
         "data": records,
         "length": len(records),
     }
-    store_trajectories = store
     return store
 
 
