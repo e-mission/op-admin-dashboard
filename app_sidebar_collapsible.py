@@ -38,7 +38,9 @@ auth_type = os.getenv('AUTH_TYPE')
 if auth_type == 'cognito':
     from utils.cognito_utils import authenticate_user, get_cognito_login_page
 elif auth_type == 'basic':
-    from config import VALID_USERNAME_PASSWORD_PAIRS
+    VALID_USERNAME_PASSWORD_PAIRS = {
+        'hello': 'world'
+    }
 
 app = Dash(
     external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME],
