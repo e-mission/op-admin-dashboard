@@ -2,17 +2,6 @@ FROM shankari/e-mission-server:master_2024-02-10--19-38
 
 ENV DASH_DEBUG_MODE True
 ENV SERVER_PORT 8050
-ENV DASH_SERVER_PORT 8050
-ENV DB_HOST db
-ENV CONFIG_PATH "https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/configs/"
-ENV STUDY_CONFIG "stage-program"
-ENV DASH_SILENCE_ROUTES_LOGGING False
-ENV WEB_SERVER_HOST 0.0.0.0
-ENV SERVER_BRANCH master
-ENV REACT_VERSION "18.2.0"
-
-# the other option is cognito
-ENV AUTH_TYPE "basic" 
 
 # copy over setup files
 WORKDIR /usr/src/app/dashboard_setup
