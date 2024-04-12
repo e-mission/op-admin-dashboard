@@ -5,9 +5,8 @@ source setup/activate.sh
 echo "DB host = "${DB_HOST}
 if [ -z ${DB_HOST} ] ; then
     local_host=`hostname -i`
-    jq --arg db_host "$local_host" '.timeseries.url = $db_host' conf/storage/db.conf.sample > conf/storage/db.conf
-else
-    jq --arg db_host "$DB_HOST" '.timeseries.url = $db_host' conf/storage/db.conf.sample > conf/storage/db.conf
+    export DB_HOST=$local_host
+    echo "Setting db host environment variable to localhost"
 fi
 
 # run the app
