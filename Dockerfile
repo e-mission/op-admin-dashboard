@@ -1,4 +1,5 @@
-FROM shankari/e-mission-server:master_2024-02-10--19-38
+# FROM shankari/e-mission-server:master_2024-02-10--19-38
+FROM mukuflash03/e-mission-server:image-push-merge_2024-04-12--01-01
 
 ENV DASH_DEBUG_MODE True
 ENV SERVER_PORT 8050
