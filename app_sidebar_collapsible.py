@@ -24,7 +24,7 @@ if os.getenv('DASH_DEBUG_MODE', 'True').lower() == 'true':
     logging.basicConfig(level=logging.DEBUG)
 
 from utils.datetime_utils import iso_to_date_only
-from utils.db_utils import df_to_filtered_records, query_uuids, query_confirmed_trips, query_demographics
+from utils.db_utils import df_to_filtered_records, query_uuids, query_confirmed_trips, query_demographics, add_user_stats
 from utils.permissions import has_permission
 import flask_talisman as flt
 
@@ -223,6 +223,7 @@ def make_layout(): return html.Div([
     dcc.Store(id='store-trips', data={}),
     dcc.Store(id='store-uuids', data={}),
     dcc.Store(id='store-excluded-uuids', data={}), # if 'test' users are excluded, a list of their uuids
+    dcc.Store(id='store-user-stats', data={}),
     dcc.Store(id='store-demographics', data={}),
     dcc.Store(id='store-trajectories', data={}),
     html.Div(id='page-content', children=make_home_page()),
@@ -275,6 +276,21 @@ def update_store_uuids(start_date, end_date, timezone, filters):
         "length": len(excluded_uuids_list),
     }
     return store_uuids, store_excluded_uuids
+
+
+# Load data stores
+@app.callback(
+    Output("store-user-stats", "data"),
+    Input('store-uuids', "data"),  
+)
+def update_user_stats(store_uuids):
+    data = store_uuids["data"][:25]
+    records = add_user_stats(data)
+    store = {
+        "data": records,
+        "length": len(records),
+    }
+    return store
 
 
 @app.callback(
