@@ -18,7 +18,6 @@ on:
         description: "Latest Docker image tags passed from e-mission-server repository on image build and push"
         required: true
 
-
 # Env variable
 env:
   DOCKER_USER: ${{secrets.DOCKER_USER}}
@@ -26,7 +25,6 @@ env:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-
   fetch_run_id:
     runs-on: ubuntu-latest
 
@@ -56,7 +54,6 @@ jobs:
         id: get_run_id
         run: echo "run_id=${{ steps.run_script.outputs.run_id }}" >> "$GITHUB_OUTPUT"
 
-    
   fetch_tag:
     needs: fetch_run_id
     runs-on: ubuntu-latest
@@ -65,7 +62,7 @@ jobs:
       RUN_ID: ${{ needs.fetch_run_id.outputs.run_id }}
 
     outputs:
-      docker_image_tag: ${{ steps.get_docker_tag.outputs.run_id }}
+      docker_image_tag: ${{ steps.get_docker_tag.outputs.docker_image_tag }}
 
     steps:
     - uses: actions/checkout@v4
@@ -84,10 +81,11 @@ jobs:
     - name: Print artifact tag
       id: get_docker_tag
       run: |
+        cat tag_file.txt
         docker_image_tag=$(cat tag_file.txt)
+        echo $docker_image_tag
         echo "::set-output name=docker_image_tag::$docker_image_tag" >> "$GITHUB_OUTPUT"
         
-
     # - name: Upload Artifact
     #   uses: actions/upload-artifact@v4
     #   with:
@@ -112,12 +110,11 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Print input docker image tag
       run: |
         echo "Event name: ${{ github.event_name }}"
-        echo "Event name: ${{ github.event.action }}"
         echo "Latest docker image tag (push): ${{ env.DOCKER_IMAGE_TAG_1 }}"
         echo "Latest docker image tag (workflow_dispatch): ${{ env.DOCKER_IMAGE_TAG_2 }}"
 
