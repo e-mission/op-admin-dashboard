@@ -8,9 +8,15 @@ on:
   push:
     # Mukul:
     # I've added a local test branch on my system and using it for testing image push.
-    # So, for testing purposes, need to checkout a branch "tags-artifact"
+    # So, for testing purposes, need to checkout a branch "tags-combo-approach"
     # TODO: Need to change to build off master or main once it looks good.
-    branches: [ tags-artifact ]
+    branches: [ tags-combo-approach ]
+
+  workflow_dispatch:
+    inputs:
+      docker_image_tag:
+        description: "Latest Docker image tags passed from e-mission-server repository on image build and push"
+        required: true
 
 
 # Env variable
@@ -28,7 +34,7 @@ jobs:
       run_id: ${{ steps.get_run_id.outputs.run_id }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v2
@@ -50,20 +56,71 @@ jobs:
         id: get_run_id
         run: echo "run_id=${{ steps.run_script.outputs.run_id }}" >> "$GITHUB_OUTPUT"
 
+    
+  fetch_tag:
+    needs: fetch_run_id
+    runs-on: ubuntu-latest
+
+    env:
+      RUN_ID: ${{ needs.fetch_run_id.outputs.run_id }}
+
+    outputs:
+      docker_image_tag: ${{ steps.get_docker_tag.outputs.run_id }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Run ID from previous fetch_run_id job
+      run: echo Run ID from previous job ${{ env.RUN_ID }}
+      
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-image-tag
+        github-token: ${{ secrets.GH_PAT_TAG }}
+        repository: MukuFlash03/e-mission-server
+        run-id: ${{ env.RUN_ID }}
+
+    - name: Print artifact tag
+      id: get_docker_tag
+      run: |
+        docker_image_tag=$(cat tag_file.txt)
+        echo "::set-output name=docker_image_tag::$docker_image_tag" >> "$GITHUB_OUTPUT"
+        
+
+    # - name: Upload Artifact
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: docker-image-tag
+    #     path: tag_file.txt
+    #     overwrite: true
+
+    # - name: List artifact
+    #   run: ls -R 
+
   # This workflow contains a single job called "build"
   build:
-    needs: fetch_run_id
+    needs: fetch_tag
 
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
     env:
-      RUN_ID: ${{needs.fetch_run_id.outputs.run_id}}
+      DOCKER_IMAGE_TAG_1: ${{ needs.fetch_tag.outputs.docker_image_tag }}
+      DOCKER_IMAGE_TAG_2: ${{ github.event.inputs.docker_image_tag }}
       
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     - uses: actions/checkout@v2
+
+    - name: Print input docker image tag
+      run: |
+        echo "Event name: ${{ github.event_name }}"
+        echo "Event name: ${{ github.event.action }}"
+        echo "Latest docker image tag (push): ${{ env.DOCKER_IMAGE_TAG_1 }}"
+        echo "Latest docker image tag (workflow_dispatch): ${{ env.DOCKER_IMAGE_TAG_2 }}"
+
     - name: docker login
       run: | # log into docker hub account
         docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
@@ -79,33 +136,13 @@ jobs:
     # Runs a set of commands using the runners shell
     # - name: build docker image
     #   run: |
-    #     docker build -t $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} .
+    #     if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+    #       docker build --build-arg DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2 -t $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} .
+    #     else
+    #       docker build --build-arg DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1 -t $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} .
+    #     fi
     #     docker images
 
     # - name: push docker image
     #   run: |
     #     docker push $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }}
-
-    - name: Use Run ID from previous fetch_run_id job
-      run: echo Run ID from previous job ${{ needs.fetch_run_id.outputs.run_id }}
-      
-    - name: Download artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: docker-image-tag
-        github-token: ${{ secrets.GH_PAT_TAG }}
-        repository: MukuFlash03/e-mission-server
-        run-id: ${{ env.RUN_ID }}
-
-    - name: Print artifact tag
-      run: cat tag_file.txt
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: docker-image-tag
-        path: tag_file.txt
-        overwrite: true
-
-    - name: List artifact
-      run: ls -R 
