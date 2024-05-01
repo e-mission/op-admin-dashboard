@@ -84,7 +84,11 @@ jobs:
         cat tag_file.txt
         docker_image_tag=$(cat tag_file.txt)
         echo $docker_image_tag
+        # echo "::set-output name=docker_image_tag::$docker_image_tag" >> "$GITHUB_OUTPUT"
         echo "::set-output name=docker_image_tag::$docker_image_tag" >> "$GITHUB_OUTPUT"
+    
+    - name: Check artifact tag in output
+      run: echo "${{ steps.get_docker_tag.outputs.docker_image_tag }}"
         
     # - name: Upload Artifact
     #   uses: actions/upload-artifact@v4
@@ -115,6 +119,7 @@ jobs:
     - name: Print input docker image tag
       run: |
         echo "Event name: ${{ github.event_name }}"
+        echo "Tag: ${{ needs.fetch_tag.outputs.docker_image_tag }}"
         echo "Latest docker image tag (push): ${{ env.DOCKER_IMAGE_TAG_1 }}"
         echo "Latest docker image tag (workflow_dispatch): ${{ env.DOCKER_IMAGE_TAG_2 }}"
 
