@@ -84,14 +84,7 @@ jobs:
         cat tag_file.txt
         docker_image_tag=$(cat tag_file.txt)
         echo $docker_image_tag
-        # echo "::set-output name=docker_image_tag::$docker_image_tag" >> "$GITHUB_OUTPUT"
-        echo "Checking set-output value..."
-        echo "::set-output name=docker_image_tag::$docker_image_tag" >> "$GITHUB_OUTPUT"
-        echo "Checking key=value..."
         echo "docker_image_tag=$(echo $docker_image_tag)" >> $GITHUB_OUTPUT
-    
-    - name: Check artifact tag in output
-      run: echo "${{ steps.get_docker_tag.outputs.docker_image_tag }}"
         
     # - name: Upload Artifact
     #   uses: actions/upload-artifact@v4
@@ -139,15 +132,15 @@ jobs:
       run: echo running in repo ${GITHUB_REPOSITORY#*/} branch ${GITHUB_REF##*/} on ${{ steps.date.outputs.date }}
 
     # Runs a set of commands using the runners shell
-    # - name: build docker image
-    #   run: |
-    #     if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-    #       docker build --build-arg DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2 -t $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} .
-    #     else
-    #       docker build --build-arg DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1 -t $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} .
-    #     fi
-    #     docker images
+    - name: build docker image
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          docker build --build-arg DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2 -t $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} .
+        else
+          docker build --build-arg DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1 -t $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} .
+        fi
+        docker images
 
-    # - name: push docker image
-    #   run: |
-    #     docker push $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }}
+    - name: push docker image
+      run: |
+        docker push $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }}
