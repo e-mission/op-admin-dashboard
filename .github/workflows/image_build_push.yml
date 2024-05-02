@@ -85,7 +85,10 @@ jobs:
         docker_image_tag=$(cat tag_file.txt)
         echo $docker_image_tag
         # echo "::set-output name=docker_image_tag::$docker_image_tag" >> "$GITHUB_OUTPUT"
+        echo "Checking set-output value..."
         echo "::set-output name=docker_image_tag::$docker_image_tag" >> "$GITHUB_OUTPUT"
+        echo "Checking key=value..."
+        echo "docker_image_tag=$(echo $docker_image_tag)" >> $GITHUB_OUTPUT
     
     - name: Check artifact tag in output
       run: echo "${{ steps.get_docker_tag.outputs.docker_image_tag }}"
