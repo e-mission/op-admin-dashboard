@@ -115,7 +115,6 @@ jobs:
     - name: Print input docker image tag
       run: |
         echo "Event name: ${{ github.event_name }}"
-        echo "Tag: ${{ needs.fetch_tag.outputs.docker_image_tag }}"
         echo "Latest docker image tag (push): ${{ env.DOCKER_IMAGE_TAG_1 }}"
         echo "Latest docker image tag (workflow_dispatch): ${{ env.DOCKER_IMAGE_TAG_2 }}"
 
