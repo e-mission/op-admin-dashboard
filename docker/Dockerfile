@@ -1,7 +1,7 @@
 # Please change once all PR changes are final, so it reads from shankari/e-mission-server
 # FROM shankari/e-mission-server:master_2024-02-10--19-38
 ARG DOCKER_IMAGE_TAG
-FROM mukuflash03/e-mission-server:image-push-merge_${DOCKER_IMAGE_TAG}
+FROM mukuflash03/e-mission-server:tags-combo-approach_${DOCKER_IMAGE_TAG}
 
 ENV DASH_DEBUG_MODE True
 ENV SERVER_PORT 8050

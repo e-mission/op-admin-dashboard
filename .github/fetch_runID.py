@@ -51,7 +51,7 @@ if __name__ == '__main__':
             successful_runs = [run for run in workflow_runs \
                                 if run["status"] == "completed" and \
                                 run["conclusion"] == "success" and \
-                                run["head_branch"] == "tags-artifact"
+                                run["head_branch"] == "tags-combo-approach"
                                ]
             # print(successful_runs)
             if successful_runs:
