@@ -35,6 +35,7 @@ if __name__ == '__main__':
         For e-mission-server: id = 35580278 
     '''
     download_url = "https://api.github.com/repos/MukuFlash03/e-mission-server/actions/workflows/75506902/runs"
+    # TODO: Comment the above line and Uncomment the below line representing the original emission repo
     # download_url = "https://api.github.com/repos/e-mission/e-mission-server/actions/workflows/35580278/runs"
     logging.debug("About to fetch workflow runs present in docker image workflow present in e-mission-server from %s" % download_url)
     r = requests.get(download_url)
@@ -48,6 +49,7 @@ if __name__ == '__main__':
 
         workflow_runs = workflow_runs_json["workflow_runs"]
         if workflow_runs:
+            # TODO: Change the head_branch name which identifies only e-mission-server runs triggered by this branch
             successful_runs = [run for run in workflow_runs \
                                 if run["status"] == "completed" and \
                                 run["conclusion"] == "success" and \

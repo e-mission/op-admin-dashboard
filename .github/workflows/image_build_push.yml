@@ -74,6 +74,7 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: docker-image-tag
+        # TODO: Create a token with basic repo permissions
         github-token: ${{ secrets.GH_PAT_TAG }}
         repository: MukuFlash03/e-mission-server
         run-id: ${{ env.RUN_ID }}
@@ -133,7 +134,7 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add .env
-        git commit -m "Updated docker image tag in .env to the latest timestamp: ${{ env.DOCKER_IMAGE_TAG_2 }}"
+        git commit -m "Updated docker image tag in .env to the latest timestamp"
         git push origin 
 
     - name: docker login
