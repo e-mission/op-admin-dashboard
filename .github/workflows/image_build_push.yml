@@ -118,6 +118,24 @@ jobs:
         echo "Latest docker image tag (push): ${{ env.DOCKER_IMAGE_TAG_1 }}"
         echo "Latest docker image tag (workflow_dispatch): ${{ env.DOCKER_IMAGE_TAG_2 }}"
 
+    - name: Update .env file 
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          echo "Workflow_dispatch: New server image built and pushed, Updating image tag in .env"
+          echo "DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2" > .env
+        else
+          echo "Push event: Restoring latest server image tag in .env"
+          echo "DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1" > .env
+        fi
+
+    - name: Add, Commit, Push changes to .env file
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add .env
+        git commit -m "Updated docker image tag in .env to the latest timestamp: ${{ env.DOCKER_IMAGE_TAG_2 }}"
+        git push origin 
+
     - name: docker login
       run: | # log into docker hub account
         docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
