@@ -75,6 +75,7 @@ jobs:
       with:
         name: docker-image-tag
         # TODO: Create a token with basic repo permissions
+        # TODO: Change user / organization to emission instead of MukuFlash03
         github-token: ${{ secrets.GH_PAT_TAG }}
         repository: MukuFlash03/e-mission-server
         run-id: ${{ env.RUN_ID }}
@@ -133,9 +134,13 @@ jobs:
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add .env
-        git commit -m "Updated docker image tag in .env to the latest timestamp"
-        git push origin 
+        if git diff --quiet; then
+          echo "Latest timestamp already present in .env file, no changes to commit"
+        else
+          git add .env
+          git commit -m "Updated docker image tag in .env file to the latest timestamp"
+          git push origin 
+        fi
 
     - name: docker login
       run: | # log into docker hub account
