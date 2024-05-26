@@ -1,6 +1,6 @@
-ARG DOCKER_IMAGE_TAG
+ARG SERVER_IMAGE_TAG
 
-FROM shankari/e-mission-server:master_${DOCKER_IMAGE_TAG}
+FROM shankari/e-mission-server:master_${SERVER_IMAGE_TAG}
 
 ENV DASH_DEBUG_MODE True
 ENV SERVER_PORT 8050

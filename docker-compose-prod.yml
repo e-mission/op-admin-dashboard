@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile
       args:
-        DOCKER_IMAGE_TAG: ${DOCKER_IMAGE_TAG}
+        SERVER_IMAGE_TAG: ${SERVER_IMAGE_TAG}
     image: e-mission/opdash:0.0.1
     ports:
       - "8050:8050"

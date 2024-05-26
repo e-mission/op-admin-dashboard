@@ -130,9 +130,9 @@ jobs:
     - name: build docker image
       run: |
         if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-          docker build --build-arg DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2 -t $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} .
+          SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2 ADMIN_DASH_IMAGE_TAG=$DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} docker compose -f docker-compose.yml build
         else
-          docker build --build-arg DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1 -t $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} .
+        SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1 ADMIN_DASH_IMAGE_TAG=$DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} docker compose -f docker-compose.yml build
         fi
         docker images
 
