@@ -99,9 +99,23 @@ jobs:
         if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
           echo "Workflow_dispatch: New server image built and pushed, Updating image tag in .env"
           echo "SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2" > .env
+          echo "COGNITO_CLIENT_ID=''" > .env
+          echo "COGNITO_CLIENT_SECRET=''" > .env
+          echo "COGNITO_REDIRECT_URL=''" > .env
+          echo "COGNITO_TOKEN_ENDPOINT=''" > .env
+          echo "COGNITO_USER_POOL_ID=''" > .env
+          echo "COGNITO_REGION=''" > .env
+          echo "COGNITO_AUTH_URL=''" > .env
         else
           echo "Push event: Restoring latest server image tag in .env"
           echo "SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1" > .env
+          echo "COGNITO_CLIENT_ID=''" > .env
+          echo "COGNITO_CLIENT_SECRET=''" > .env
+          echo "COGNITO_REDIRECT_URL=''" > .env
+          echo "COGNITO_TOKEN_ENDPOINT=''" > .env
+          echo "COGNITO_USER_POOL_ID=''" > .env
+          echo "COGNITO_REGION=''" > .env
+          echo "COGNITO_AUTH_URL=''" > .env
         fi
 
     - name: Add, Commit, Push changes to .env file
