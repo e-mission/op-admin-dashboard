@@ -2,7 +2,7 @@ name: docker-image-push-admin
 
 on:
   push:
-    branches: [ master, image-push ]
+    branches: [ master ]
 
   workflow_dispatch:
     inputs:
@@ -66,7 +66,7 @@ jobs:
         name: docker-image-tag
         # TODO: Create a token with basic repo permissions
         github-token: ${{ secrets.GH_PAT_TAG }}
-        repository: MukuFlash03/e-mission-server
+        repository: e-mission/e-mission-server
         run-id: ${{ env.RUN_ID }}
 
     - name: Print artifact tag
@@ -130,15 +130,15 @@ jobs:
     - name: build docker image
       run: |
         if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-          SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2 ADMIN_DASH_IMAGE_TAG=$DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} docker compose -f docker-compose-dev.yml build
+          SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2 docker compose -f docker-compose-dev.yml build
         else
-        SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1 ADMIN_DASH_IMAGE_TAG=$DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} docker compose -f docker-compose-dev.yml build
+        SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1 docker compose -f docker-compose-dev.yml build
         fi
         docker images
 
-    # - name: rename docker image
-    #   run: |
-    #     docker image tag e-mission/opdash:0.0.1 $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }}
+    - name: rename docker image
+      run: |
+        docker image tag e-mission/opdash:0.0.1 $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }}
 
     - name: push docker image
       run: |
