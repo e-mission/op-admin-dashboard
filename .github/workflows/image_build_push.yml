@@ -136,6 +136,10 @@ jobs:
         fi
         docker images
 
+    - name: rename docker image
+      run: |
+        docker image tag e-mission/opdash:0.0.1 $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }}
+
     - name: push docker image
       run: |
         docker push $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }}
