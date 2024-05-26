@@ -98,10 +98,10 @@ jobs:
       run: |
         if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
           echo "Workflow_dispatch: New server image built and pushed, Updating image tag in .env"
-          echo "DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2" > .env
+          echo "SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2" > .env
         else
           echo "Push event: Restoring latest server image tag in .env"
-          echo "DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1" > .env
+          echo "SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1" > .env
         fi
 
     - name: Add, Commit, Push changes to .env file
