@@ -66,7 +66,7 @@ jobs:
         name: docker-image-tag
         # TODO: Create a token with basic repo permissions
         github-token: ${{ secrets.GH_PAT_TAG }}
-        repository: e-mission/e-mission-server
+        repository: MukuFlash03/e-mission-server
         run-id: ${{ env.RUN_ID }}
 
     - name: Print artifact tag
