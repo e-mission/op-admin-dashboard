@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        SERVER_IMAGE_TAG: ${SERVER_IMAGE_TAG}
     image: e-mission/opdash:0.0.1
     ports:
       - "8050:8050"

@@ -4,16 +4,16 @@ import dash_bootstrap_components as dbc
 import flask
 import requests
 import dash
+import os
 
-from config import CognitoConfig
 from utils import decode_jwt
 
 
 def get_tokens(code):
-    client_id = CognitoConfig.CLIENT_ID
-    client_secret = CognitoConfig.CLIENT_SECRET
-    redirect_uri = CognitoConfig.REDIRECT_URL
-    token_endpoint = CognitoConfig.TOKEN_ENDPOINT
+    client_id = os.getenv("COGNITO_CLIENT_ID", '')
+    client_secret = os.getenv("COGNITO_CLIENT_SECRET", '')
+    redirect_uri = os.getenv("COGNITO_REDIRECT_URL", '')
+    token_endpoint = os.getenv("COGNITO_TOKEN_ENDPOINT", '')
 
     encoded_data = base64.b64encode(f'{client_id}:{client_secret}'.encode('ascii')).decode('ascii')
     headers = {
@@ -59,7 +59,7 @@ def get_cognito_login_page(text='Welcome to the dashboard', color='black'):
                 dash.html.Label(text, style={
                     'font-size': '15px', 'display': 'block', 'verticalAlign': 'top', 'padding': '15px', 'color': color
                 }),
-                dbc.Button('Login with AWS Cognito', id='login-button', href=CognitoConfig.AUTH_URL, style={
+                dbc.Button('Login with AWS Cognito', id='login-button', href=os.getenv("COGNITO_AUTH_URL", ''), style={
                     'font-size': '14px', 'display': 'block', 'padding': '15px', 'verticalAlign': 'top',
                     'background-color': 'green', 'color': 'white'
                 }),

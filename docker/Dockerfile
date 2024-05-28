@@ -1,4 +1,6 @@
-FROM shankari/e-mission-server:master_2024-04-15--53-23
+ARG SERVER_IMAGE_TAG
+
+FROM shankari/e-mission-server:master_${SERVER_IMAGE_TAG}
 
 ENV DASH_DEBUG_MODE True
 ENV SERVER_PORT 8050
@@ -17,10 +19,10 @@ COPY ./pages ./
 WORKDIR /usr/src/app/utils
 COPY ./utils ./
 WORKDIR /usr/src/app
-COPY app.py config.py app_sidebar_collapsible.py assets globals.py globalsUpdater.py Procfile ./
+COPY app.py app_sidebar_collapsible.py globals.py globalsUpdater.py Procfile ./
 
 WORKDIR /usr/src/app/assets
-COPY assets/style.css ./
+COPY assets/ ./
 RUN mkdir qrcodes
 
 # copy over test data

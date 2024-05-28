@@ -17,6 +17,7 @@ import dash_bootstrap_components as dbc
 from dash import Input, Output, dcc, html, Dash
 import dash_auth
 import logging
+import base64
 # Set the logging right at the top to make sure that debug
 # logs are displayed in dev mode
 # until https://github.com/plotly/dash/issues/532 is fixed
@@ -29,15 +30,17 @@ from utils.permissions import has_permission
 import flask_talisman as flt
 
 
-
-OPENPATH_LOGO = "https://www.nrel.gov/transportation/assets/images/openpath-logo.jpg"
+OPENPATH_LOGO = os.path.join(os.getcwd(), "assets/openpath-logo.jpg")
+encoded_image = base64.b64encode(open(OPENPATH_LOGO, 'rb').read()).decode("utf-8")
 auth_type = os.getenv('AUTH_TYPE')
 
 
 if auth_type == 'cognito':
     from utils.cognito_utils import authenticate_user, get_cognito_login_page
 elif auth_type == 'basic':
-    from config import VALID_USERNAME_PASSWORD_PAIRS
+    VALID_USERNAME_PASSWORD_PAIRS = {
+        'hello': 'world'
+    }
 
 app = Dash(
     external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME],
@@ -59,7 +62,8 @@ sidebar = html.Div(
             [
                 # width: 3rem ensures the logo is the exact width of the
                 # collapsed sidebar (accounting for padding)
-                html.Img(src=OPENPATH_LOGO, style={"width": "3rem"}),
+                # html.Img(src=OPENPATH_LOGO, style={"width": "3rem"}),
+                html.Img(src=f"data:image/png;base64,{encoded_image}", style={"width": "3rem"}), # Working
                 html.H2("OpenPATH"),
             ],
             className="sidebar-header",

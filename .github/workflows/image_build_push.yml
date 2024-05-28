@@ -1,0 +1,172 @@
+name: docker-image-push-admin
+
+on:
+  push:
+    branches: [ master ]
+
+  workflow_dispatch:
+    inputs:
+      docker_image_tag:
+        description: "Latest Docker image tags passed from e-mission-server repository on image build and push"
+        required: true
+
+env:
+  DOCKER_USER: ${{secrets.DOCKER_USER}}
+  DOCKER_PASSWORD: ${{secrets.DOCKER_PASSWORD}}
+
+jobs:
+  fetch_run_id:
+    runs-on: ubuntu-latest
+
+    outputs:
+      run_id: ${{ steps.get_run_id.outputs.run_id }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with: 
+          python-version: '3.x'
+
+      - name: Install Python dependencies
+        run: |
+         python -m pip install --upgrade pip
+         pip install requests
+
+      - name: Run Python script
+        id: run_script
+        run: |
+          echo "Fetching latest successful run ID from e-misison-server docker image workflow"
+          python .github/fetch_runID.py
+    
+      - name: Get Run ID
+        id: get_run_id
+        run: echo "run_id=${{ steps.run_script.outputs.run_id }}" >> "$GITHUB_OUTPUT"
+
+  fetch_tag:
+    needs: fetch_run_id
+    runs-on: ubuntu-latest
+
+    env:
+      RUN_ID: ${{ needs.fetch_run_id.outputs.run_id }}
+
+    outputs:
+      docker_image_tag: ${{ steps.get_docker_tag.outputs.docker_image_tag }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Run ID from previous fetch_run_id job
+      run: echo Run ID from previous job ${{ env.RUN_ID }}
+      
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-image-tag
+        # TODO: Create a token with basic repo permissions
+        github-token: ${{ secrets.GH_PAT_TAG }}
+        repository: e-mission/e-mission-server
+        run-id: ${{ env.RUN_ID }}
+
+    - name: Print artifact tag
+      id: get_docker_tag
+      run: |
+        cat tag_file.txt
+        docker_image_tag=$(cat tag_file.txt)
+        echo $docker_image_tag
+        echo "docker_image_tag=$(echo $docker_image_tag)" >> $GITHUB_OUTPUT
+
+  build:
+    needs: fetch_tag
+    runs-on: ubuntu-latest
+
+    env:
+      DOCKER_IMAGE_TAG_1: ${{ needs.fetch_tag.outputs.docker_image_tag }}
+      DOCKER_IMAGE_TAG_2: ${{ github.event.inputs.docker_image_tag }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Print input docker image tag
+      run: |
+        echo "Event name: ${{ github.event_name }}"
+        echo "Latest docker image tag (push): ${{ env.DOCKER_IMAGE_TAG_1 }}"
+        echo "Latest docker image tag (workflow_dispatch): ${{ env.DOCKER_IMAGE_TAG_2 }}"
+
+    - name: Update .env file 
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          echo "Workflow_dispatch: New server image built and pushed, Updating image tag in .env"
+          echo "SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2" > .env
+          echo "COGNITO_CLIENT_ID=''" > .env
+          echo "COGNITO_CLIENT_SECRET=''" > .env
+          echo "COGNITO_REDIRECT_URL=''" > .env
+          echo "COGNITO_TOKEN_ENDPOINT=''" > .env
+          echo "COGNITO_USER_POOL_ID=''" > .env
+          echo "COGNITO_REGION=''" > .env
+          echo "COGNITO_AUTH_URL=''" > .env
+        else
+          echo "Push event: Restoring latest server image tag in .env"
+          echo "SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1" > .env
+          echo "COGNITO_CLIENT_ID=''" > .env
+          echo "COGNITO_CLIENT_SECRET=''" > .env
+          echo "COGNITO_REDIRECT_URL=''" > .env
+          echo "COGNITO_TOKEN_ENDPOINT=''" > .env
+          echo "COGNITO_USER_POOL_ID=''" > .env
+          echo "COGNITO_REGION=''" > .env
+          echo "COGNITO_AUTH_URL=''" > .env
+        fi
+
+    - name: Add, Commit, Push changes to .env file
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        if git diff --quiet; then
+          echo "Latest timestamp already present in .env file, no changes to commit"
+        else
+          git add .env
+          git commit -m "Updated docker image tag in .env file to the latest timestamp"
+          git push origin 
+        fi
+
+    - name: docker login
+      run: | # log into docker hub account
+        docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
+
+    - name: Get current date # get the date of the build
+      id: date
+      run: echo "::set-output name=date::$(date +'%Y-%m-%d--%M-%S')"
+
+    - name: Run a one-line script
+      run: echo running in repo ${GITHUB_REPOSITORY#*/} branch ${GITHUB_REF##*/} on ${{ steps.date.outputs.date }}
+
+    - name: build docker image
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2 docker compose -f docker-compose-prod.yml build
+        else
+        SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1 docker compose -f docker-compose-prod.yml build
+        fi
+        docker images
+
+    - name: rename docker image
+      run: |
+        docker image tag e-mission/opdash:0.0.1 $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }}
+
+    - name: push docker image
+      run: |
+        docker push $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }}
+
+    - name: Create artifact text file
+      run: |
+          echo ${{ steps.date.outputs.date }} > admin_dash_tag_file.txt
+          echo "Created tag text file"
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+          name: admin-dash-image-tag
+          path: admin_dash_tag_file.txt
+          overwrite: true
+  
