@@ -25,7 +25,7 @@ if os.getenv('DASH_DEBUG_MODE', 'True').lower() == 'true':
 
 from utils.datetime_utils import iso_to_date_only
 from utils.db_utils import df_to_filtered_records, query_uuids, query_confirmed_trips, query_demographics
-from utils.permissions import has_permission
+from utils.permissions import has_permission, config
 import flask_talisman as flt
 
 
@@ -134,6 +134,8 @@ sidebar = html.Div(
     className="sidebar",
 )
 
+subgroups = config.get('opcode', {}).get('subgroups')
+include_test_users = config.get('metrics', {}).get('include_test_users')
 # Global controls including date picker and timezone selector
 def make_controls():
   # according to docs, DatePickerRange will accept YYYY-MM-DD format
@@ -161,7 +163,7 @@ def make_controls():
                     'border-radius': '3px', 'margin-left': '3px'}
           ),
       ],
-          style={'display': 'flex'},
+          style={'display': 'flex', 'margin-left': 'auto'},
       ),
       dbc.Collapse([
           html.Div([
@@ -179,20 +181,23 @@ def make_controls():
                   style={'width': '180px'},
               )]
           ),
-
-          dcc.Checklist(
-              id='global-filters',
-              options=[
-                  {'label': 'Exclude "test" users',
-                   'value': 'exclude-test-users'},
-              ],
-              value=['exclude-test-users'],
-              style={'margin-top': '10px'},
-          ),
       ],
           id='collapse-filters',
           is_open=False,
           style={'padding': '5px 15px 10px', 'border': '1px solid #dbdbdb', 'border-top': '0'}
+      ),
+      html.Div([
+          html.Span('Exclude subgroups:'),
+          dcc.Dropdown(
+              id='excluded-subgroups',
+              options=subgroups or ['test'],
+              value=[] if include_test_users else ['test'],
+              multi=True,
+              style={'flex': '1'},
+          ),
+      ],
+          style={'display': 'flex', 'gap': '5px',
+                 'align-items': 'center', 'margin-top': '10px'}
       ),
   ],
       style={'margin': '10px 10px 0 auto',
@@ -222,7 +227,7 @@ def make_layout(): return html.Div([
     dcc.Location(id='url', refresh=False),
     dcc.Store(id='store-trips', data={}),
     dcc.Store(id='store-uuids', data={}),
-    dcc.Store(id='store-excluded-uuids', data={}), # if 'test' users are excluded, a list of their uuids
+    dcc.Store(id='store-excluded-uuids', data={}), # list of UUIDs from excluded subgroups
     dcc.Store(id='store-demographics', data={}),
     dcc.Store(id='store-trajectories', data={}),
     html.Div(id='page-content', children=make_home_page()),
@@ -250,21 +255,21 @@ def toggle_collapse_filters(n, is_open):
     Input('date-picker', 'start_date'),  # these are ISO strings
     Input('date-picker', 'end_date'),  # these are ISO strings
     Input('date-picker-timezone', 'value'),
-    Input('global-filters', 'value'),
+    Input('excluded-subgroups', 'value'),
 )
-def update_store_uuids(start_date, end_date, timezone, filters):
+def update_store_uuids(start_date, end_date, timezone, excluded_subgroups):
     (start_date, end_date) = iso_to_date_only(start_date, end_date)
     dff = query_uuids(start_date, end_date, timezone)
     if dff.empty:
         return {"data": [], "length": 0}, {"data": [], "length": 0}
-    # if 'exclude-testusers' filter is active,
-    # exclude any rows with user_token containing 'test', and
-    # output a list of those excluded UUIDs so other callbacks can exclude them too
-    if 'exclude-test-users' in filters:
-        excluded_uuids_list = dff[dff['user_token'].str.contains(
-            'test')]['user_id'].tolist()
-    else:
-        excluded_uuids_list = []
+    
+    # if any subgroups are excluded, find UUIDs in those subgroups and output
+    # a list to store-excluded-uuids so that other callbacks can exclude them too
+    excluded_uuids_list = []
+    for subgroup in excluded_subgroups:
+        uuids_in_subgroup = dff[dff['user_token'].str.contains(f"_{subgroup}_")]['user_id'].tolist()
+        excluded_uuids_list.extend(uuids_in_subgroup)
+
     records = df_to_filtered_records(dff, 'user_id', excluded_uuids_list)
     store_uuids = {
         "data": records,
