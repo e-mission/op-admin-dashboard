@@ -19,6 +19,7 @@ services:
       STUDY_CONFIG: "stage-program"
       AUTH_TYPE: "basic" # the other option is cognito
       REACT_VERSION: "18.2.0"
+      TOKEN_DELETION_ENABLED: "False"
     networks:
        - emission
     volumes:
