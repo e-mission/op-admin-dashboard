@@ -82,8 +82,8 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      DOCKER_IMAGE_TAG_1: ${{ needs.fetch_tag.outputs.docker_image_tag }}
-      DOCKER_IMAGE_TAG_2: ${{ github.event.inputs.docker_image_tag }}
+      DOCKER_TAG_FROM_PUSH: ${{ needs.fetch_tag.outputs.docker_image_tag }}
+      DOCKER_TAG_FROM_WORKFLOW_DISPATCH: ${{ github.event.inputs.docker_image_tag }}
 
     steps:
     - uses: actions/checkout@v4
@@ -91,14 +91,14 @@ jobs:
     - name: Print input docker image tag
       run: |
         echo "Event name: ${{ github.event_name }}"
-        echo "Latest docker image tag (push): ${{ env.DOCKER_IMAGE_TAG_1 }}"
-        echo "Latest docker image tag (workflow_dispatch): ${{ env.DOCKER_IMAGE_TAG_2 }}"
+        echo "Latest docker image tag (push): ${{ env.DOCKER_TAG_FROM_PUSH }}"
+        echo "Latest docker image tag (workflow_dispatch): ${{ env.DOCKER_TAG_FROM_WORKFLOW_DISPATCH }}"
 
     - name: Update .env file 
       run: |
         if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
           echo "Workflow_dispatch: New server image built and pushed, Updating image tag in .env"
-          echo "SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2" > .env
+          echo "SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_WORKFLOW_DISPATCH" > .env
           echo "COGNITO_CLIENT_ID=''" > .env
           echo "COGNITO_CLIENT_SECRET=''" > .env
           echo "COGNITO_REDIRECT_URL=''" > .env
@@ -108,7 +108,7 @@ jobs:
           echo "COGNITO_AUTH_URL=''" > .env
         else
           echo "Push event: Restoring latest server image tag in .env"
-          echo "SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1" > .env
+          echo "SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_PUSH" > .env
           echo "COGNITO_CLIENT_ID=''" > .env
           echo "COGNITO_CLIENT_SECRET=''" > .env
           echo "COGNITO_REDIRECT_URL=''" > .env
@@ -144,9 +144,9 @@ jobs:
     - name: build docker image
       run: |
         if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-          SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_2 docker compose -f docker-compose-prod.yml build
+          SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_WORKFLOW_DISPATCH docker compose -f docker-compose-prod.yml build
         else
-        SERVER_IMAGE_TAG=$DOCKER_IMAGE_TAG_1 docker compose -f docker-compose-prod.yml build
+        SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_PUSH docker compose -f docker-compose-prod.yml build
         fi
         docker images
 
