@@ -15,77 +15,19 @@ env:
   DOCKER_PASSWORD: ${{secrets.DOCKER_PASSWORD}}
 
 jobs:
-  fetch_run_id:
-    runs-on: ubuntu-latest
-
-    outputs:
-      run_id: ${{ steps.get_run_id.outputs.run_id }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with: 
-          python-version: '3.x'
-
-      - name: Install Python dependencies
-        run: |
-         pip install requests
-
-      - name: Run Python script
-        id: run_script
-        run: |
-          echo "Fetching latest successful run ID from e-misison-server docker image workflow"
-          python .github/fetch_runID.py
-    
-      - name: Get Run ID
-        id: get_run_id
-        run: echo "run_id=${{ steps.run_script.outputs.run_id }}" >> "$GITHUB_OUTPUT"
-
-  fetch_tag:
-    needs: fetch_run_id
-    runs-on: ubuntu-latest
-
-    env:
-      RUN_ID: ${{ needs.fetch_run_id.outputs.run_id }}
-
-    outputs:
-      docker_image_tag: ${{ steps.get_docker_tag.outputs.docker_image_tag }}
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Use Run ID from previous fetch_run_id job
-      run: echo Run ID from previous job ${{ env.RUN_ID }}
-      
-    - name: Download artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: docker-image-tag
-        # TODO: Create a token with basic repo permissions
-        github-token: ${{ secrets.GH_PAT_TAG }}
-        repository: e-mission/e-mission-server
-        run-id: ${{ env.RUN_ID }}
-
-    - name: Print artifact tag
-      id: get_docker_tag
-      run: |
-        cat tag_file.txt
-        docker_image_tag=$(cat tag_file.txt)
-        echo $docker_image_tag
-        echo "docker_image_tag=$(echo $docker_image_tag)" >> $GITHUB_OUTPUT
-
   build:
-    needs: fetch_tag
     runs-on: ubuntu-latest
 
     env:
-      DOCKER_TAG_FROM_PUSH: ${{ needs.fetch_tag.outputs.docker_image_tag }}
       DOCKER_TAG_FROM_WORKFLOW_DISPATCH: ${{ github.event.inputs.docker_image_tag }}
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Set docker image tag from .env file
+      run: |
+        set -a; source .env; set +a
+        echo "DOCKER_TAG_FROM_PUSH=${SERVER_IMAGE_TAG}" >> $GITHUB_ENV
 
     - name: Print input docker image tag
       run: |
@@ -99,8 +41,7 @@ jobs:
           echo "Workflow_dispatch: New server image built and pushed, Updating image tag in .env"
           echo "SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_WORKFLOW_DISPATCH" > .env
         else
-          echo "Push event: Restoring latest server image tag in .env"
-          echo "SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_PUSH" > .env
+          echo "Push event: Restoring latest server image tag from .env"
         fi
 
     - name: Add, Commit, Push changes to .env file
