@@ -145,7 +145,7 @@ jobs:
         if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
           SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_WORKFLOW_DISPATCH docker compose -f docker-compose-prod.yml build
         else
-        SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_PUSH docker compose -f docker-compose-prod.yml build
+          SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_PUSH docker compose -f docker-compose-prod.yml build
         fi
         docker images
 
