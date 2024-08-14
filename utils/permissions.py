@@ -77,6 +77,8 @@ def get_all_trip_columns():
 
     columns.update(get_required_columns())
     # logging.debug("get_all_trip_columns: curr set is %s" % columns)
+    columns.update(permissions.get('additional_trip_columns', []))
+    logging.debug("get_all_trip_columns: after additional columns, curr set is %s" % columns)
     return columns
 
 
@@ -84,6 +86,9 @@ def get_allowed_trip_columns():
     columns = set(constants.VALID_TRIP_COLS)
     for column in permissions.get("data_trips_columns_exclude", []):
         columns.discard(column)
+    for column in permissions.get("additional_trip_columns", []):
+        columns.add(column)
+    logging.debug("allowed trip columns are %s" % columns)
     return columns
 
 
