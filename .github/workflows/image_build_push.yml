@@ -35,27 +35,6 @@ jobs:
         echo "Latest docker image tag (push): ${{ env.DOCKER_TAG_FROM_PUSH }}"
         echo "Latest docker image tag (workflow_dispatch): ${{ env.DOCKER_TAG_FROM_WORKFLOW_DISPATCH }}"
 
-    - name: Update .env file 
-      run: |
-        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-          echo "Workflow_dispatch: New server image built and pushed, Updating image tag in .env"
-          echo "SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_WORKFLOW_DISPATCH" > .env
-        else
-          echo "Push event: Restoring latest server image tag from .env"
-        fi
-
-    - name: Add, Commit, Push changes to .env file
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "Github Actions bot to update .env with latest tags"
-        if git diff --quiet; then
-          echo "Latest timestamp already present in .env file, no changes to commit"
-        else
-          git add .env
-          git commit -m "Updated docker image tag in .env file to the latest timestamp"
-          git push origin 
-        fi
-
     - name: docker login
       run: | # log into docker hub account
         docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
@@ -83,6 +62,27 @@ jobs:
     - name: push docker image
       run: |
         docker push $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }}
+
+    - name: Update .env file 
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          echo "Workflow_dispatch: New server image built and pushed, Updating image tag in .env"
+          echo "SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_WORKFLOW_DISPATCH" > .env
+        else
+          echo "Push event: Restoring latest server image tag from .env"
+        fi
+  
+    - name: Add, Commit, Push changes to .env file
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "Github Actions bot to update .env with latest tags"
+        if git diff --quiet; then
+          echo "Latest timestamp already present in .env file, no changes to commit"
+        else
+          git add .env
+          git commit -m "Updated docker image tag in .env file to the latest timestamp"
+          git push origin 
+        fi
 
     - name: Create artifact text file
       run: |
