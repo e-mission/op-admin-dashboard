@@ -6,9 +6,6 @@ REQUIRED_NAMED_COLS = [
 ]
 
 MULTILABEL_NAMED_COLS = [
-    {'label': 'mode_confirm', 'path': 'data.user_input.mode_confirm'},
-    {'label': 'purpose_confirm', 'path': 'data.user_input.purpose_confirm'},
-    {'label': 'replaced_mode', 'path': 'data.user_input.replaced_mode'},
 ]
 
 VALID_TRIP_COLS = [
@@ -24,6 +21,9 @@ VALID_TRIP_COLS = [
     "data.distance_meters",
     "data.start_loc.coordinates",
     "data.end_loc.coordinates",
+    "data.primary_sensed_mode",
+    "data.primary_predicted_mode",
+    "data.primary_ble_sensed_mode",
     "user_id"
 ]
 
@@ -31,6 +31,8 @@ BINARY_TRIP_COLS = [
     'user_id',
     'data.start_place',
     'data.end_place',
+    "cleaned_section_summary",
+    "inferred_section_summary",
 ]
 
 valid_uuids_columns = [

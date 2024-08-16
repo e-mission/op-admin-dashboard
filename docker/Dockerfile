@@ -1,4 +1,8 @@
-FROM shankari/e-mission-server:master_2024-02-10--19-38
+ARG SERVER_IMAGE_TAG
+
+FROM shankari/e-mission-server:master_${SERVER_IMAGE_TAG}
+
+ADD https://s3.amazonaws.com/rds-downloads/rds-combined-ca-bundle.pem /etc/ssl/certs/
 
 ENV DASH_DEBUG_MODE True
 ENV SERVER_PORT 8050
@@ -17,10 +21,10 @@ COPY ./pages ./
 WORKDIR /usr/src/app/utils
 COPY ./utils ./
 WORKDIR /usr/src/app
-COPY app.py config.py app_sidebar_collapsible.py assets globals.py globalsUpdater.py Procfile ./
+COPY app.py app_sidebar_collapsible.py globals.py globalsUpdater.py Procfile ./
 
 WORKDIR /usr/src/app/assets
-COPY assets/style.css ./
+COPY assets/ ./
 RUN mkdir qrcodes
 
 # copy over test data

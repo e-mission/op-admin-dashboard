@@ -74,12 +74,16 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
         columns.update(
             col['label'] for col in perm_utils.get_allowed_named_trip_columns()
         )
+        columns.update(store_trips["userinputcols"])
         has_perm = perm_utils.has_permission('data_trips')
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
             return None
 
+        logging.debug(f"Final list of retained cols {columns=}")
+        logging.debug(f"Before dropping, {df.columns=}")
         df = df.drop(columns=[col for col in df.columns if col not in columns])
+        logging.debug(f"After dropping, {df.columns=}")
         df = clean_location_data(df)
 
         trips_table = populate_datatable(df,'trips-table')

@@ -14,15 +14,14 @@ import time
 import urllib.request
 from jose import jwk, jwt
 from jose.utils import base64url_decode
+import os
 
-from config import CognitoConfig
-
-client_id = CognitoConfig.CLIENT_ID
-client_secret = CognitoConfig.CLIENT_SECRET
-redirect_uri = CognitoConfig.REDIRECT_URL
-token_endpoint = CognitoConfig.TOKEN_ENDPOINT
-user_pool_id = CognitoConfig.USER_POOL_ID
-region = CognitoConfig.REGION
+client_id = os.getenv("COGNITO_CLIENT_ID", '')
+client_secret = os.getenv("COGNITO_CLIENT_SECRET", '')
+redirect_uri = os.getenv("COGNITO_REDIRECT_URL", '')
+token_endpoint = os.getenv("COGNITO_TOKEN_ENDPOINT", '')
+user_pool_id = os.getenv("COGNITO_USER_POOL_ID", '')
+region = os.getenv("COGNITO_REGION", '')
 
 keys_url = f'https://cognito-idp.{region}.amazonaws.com/{user_pool_id}/.well-known/jwks.json'
 # instead of re-downloading the public keys every time
