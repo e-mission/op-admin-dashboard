@@ -2,7 +2,7 @@ ARG SERVER_IMAGE_TAG
 
 FROM shankari/e-mission-server:master_${SERVER_IMAGE_TAG}
 
-ADD https://s3.amazonaws.com/rds-downloads/rds-combined-ca-bundle.pem /etc/ssl/certs/
+ADD https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /etc/ssl/certs/
 
 ENV DASH_DEBUG_MODE True
 ENV SERVER_PORT 8050
