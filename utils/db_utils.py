@@ -3,6 +3,7 @@ import arrow
 from uuid import UUID
 
 import pandas as pd
+import polars as pl
 import pymongo
 
 import emission.core.get_database as edb
@@ -17,15 +18,34 @@ from utils import constants
 from utils import permissions as perm_utils
 from utils.datetime_utils import iso_range_to_ts_range
 
-def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude: list[str] = []):
+def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude=None):
     """
-    Returns a dictionary of df records, given a dataframe, a column to filter on,
-    and a list of values that rows in that column will be excluded if they match
+    Returns a list of dictionaries representing the records in the DataFrame, 
+    given a column to filter on and a list of values to exclude from that column.
+    
+    :param df: The pandas DataFrame to filter.
+    :param col_to_filter: The column name to filter on.
+    :param vals_to_exclude: List of values to exclude from the filtering.
+    :return: List of dictionaries representing filtered DataFrame records.
     """
-    if df.empty: return []
-    if col_to_filter and vals_to_exclude: # will only filter if both are not None or []
+    # Check if df is a valid DataFrame and if it is empty
+    if not isinstance(df, pd.DataFrame) or len(df) == 0:
+        return []
+    
+    # Default to an empty list if vals_to_exclude is None
+    if vals_to_exclude is None:
+        vals_to_exclude = []
+    
+    # Perform filtering if col_to_filter and vals_to_exclude are provided
+    if col_to_filter and vals_to_exclude:
+        # Ensure vals_to_exclude is a list of strings
+        if not isinstance(vals_to_exclude, list) or not all(isinstance(val, str) for val in vals_to_exclude):
+            raise ValueError("vals_to_exclude must be a list of strings.")
         df = df[~df[col_to_filter].isin(vals_to_exclude)]
+    
+    # Return the filtered DataFrame as a list of dictionaries
     return df.to_dict("records")
+
 
 def query_uuids(start_date: str, end_date: str, tz: str):
     # As of now, time filtering does not apply to UUIDs; we just query all of them.
@@ -207,25 +227,41 @@ def query_demographics():
                     
     return dataframes
 
-def query_trajectories(start_date: str, end_date: str, tz: str):
+def query_trajectories(start_date: str, end_date: str, tz: str) -> pl.DataFrame:
+    # Convert ISO date range to timestamps
+    start_ts, end_ts = iso_range_to_ts_range(start_date, end_date, tz)
     
-    (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
+    # Retrieve the time series data
     ts = esta.TimeSeries.get_aggregate_time_series()
     entries = ts.find_entries(
         key_list=["analysis/recreated_location"],
         time_query=estt.TimeQuery("data.ts", start_ts, end_ts),
     )
-    df = pd.json_normalize(list(entries))
-    if not df.empty:
-        for col in df.columns:
-            if df[col].dtype == 'object':
-                df[col] = df[col].apply(str)
-        columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
-        df.drop(columns= columns_to_drop, inplace=True) 
-        for col in constants.EXCLUDED_TRAJECTORIES_COLS:
-            if col in df.columns:
-                df.drop(columns= [col], inplace=True) 
-        df['data.mode_str'] = df['data.mode'].apply(lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN')
+    
+    # Normalize JSON entries into a Polars DataFrame
+    df = pl.DataFrame(entries)
+    
+    if df.shape[0] > 0:
+        # Convert all object columns to strings
+        df = df.with_columns([
+            pl.col(col).cast(pl.Utf8) for col in df.columns if df[col].dtype == 'object'
+        ])
+        
+        # Drop columns starting with "metadata"
+        metadata_cols = [col for col in df.columns if col.startswith("metadata")]
+        df = df.drop(metadata_cols)
+        
+        # Drop columns listed in EXCLUDED_TRAJECTORIES_COLS
+        excluded_cols = [col for col in constants.EXCLUDED_TRAJECTORIES_COLS if col in df.columns]
+        df = df.drop(excluded_cols)
+        
+        # Map 'data.mode' to its string representation
+        df = df.with_columns([
+            pl.col("data.mode").apply(
+                lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
+            ).alias("data.mode_str")
+        ])
+    
     return df
 
 

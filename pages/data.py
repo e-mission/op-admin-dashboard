@@ -7,8 +7,8 @@ from dash import dcc, html, Input, Output, callback, register_page, dash_table, 
 # Etc
 import logging
 import pandas as pd
+import polars as pl
 from dash.exceptions import PreventUpdate
-
 from utils import constants
 from utils import permissions as perm_utils
 from utils import db_utils
@@ -31,13 +31,17 @@ layout = html.Div(
     ]
 )
 
-
-def clean_location_data(df):
+def clean_location_data(df: pl.DataFrame) -> pl.DataFrame:
     if 'data.start_loc.coordinates' in df.columns:
-        df['data.start_loc.coordinates'] = df['data.start_loc.coordinates'].apply(lambda x: f'({x[0]}, {x[1]})')
+        df = df.with_columns(
+            pl.col('data.start_loc.coordinates').apply(lambda x: f'({x[0]}, {x[1]})').alias('data.start_loc.coordinates')
+        )
     if 'data.end_loc.coordinates' in df.columns:
-        df['data.end_loc.coordinates'] = df['data.end_loc.coordinates'].apply(lambda x: f'({x[0]}, {x[1]})')
+        df = df.with_columns(
+            pl.col('data.end_loc.coordinates').apply(lambda x: f'({x[0]}, {x[1]})').alias('data.end_loc.coordinates')
+        )
     return df
+
 
 def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids):
     df = query_trajectories(start_date, end_date, tz)
@@ -176,7 +180,6 @@ def update_dropdowns_trips(n_clicks, button_label):
         button_label = 'Display columns with humanzied units'
     #return the list of hidden columns and the updated button label
     return hidden_col, button_label
-
 
 def populate_datatable(df, table_id=''):
     if not isinstance(df, pd.DataFrame):
