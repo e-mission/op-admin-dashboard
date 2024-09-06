@@ -15,6 +15,32 @@ COLLECTION_NAME="$4"
 # Extract the base name of the dump file for use in the restore command
 FILE_NAME=$(basename "$MONGODUMP_FILE")
 
+# Paths
+SCRIPT_DIR="$(dirname "$0")"
+COMPOSE_FILE="$SCRIPT_DIR/../docker-compose-dev.yml"  # Adjust the path to the docker-compose.yml file
+
+# Extract the new database host from the docker-compose file
+NEW_DB_HOST=$(grep 'DB_HOST:' "$COMPOSE_FILE" | sed 's|DB_HOST: ||')
+
+# Modify the docker-compose.yml to update the DB_HOST (if needed)
+echo "Updating $COMPOSE_FILE to set DB_HOST to mongodb://db:27017/$DATABASE_NAME"
+sed -i.bak "s|DB_HOST: .*|DB_HOST: mongodb://db:27017/$DATABASE_NAME|" "$COMPOSE_FILE"
+
+# Restart Docker Compose to apply changes
+echo "Restarting Docker Compose services"
+docker compose -f "$COMPOSE_FILE" down
+docker compose -f "$COMPOSE_FILE" up -d
+
+# Wait for Docker Compose to be ready
+echo "Waiting for Docker Compose services to be ready"
+sleep 10
+
+# Check if the Docker container is running
+if ! docker ps | grep -q "$DOCKER_CONTAINER_NAME"; then
+    echo "Docker container $DOCKER_CONTAINER_NAME is not running"
+    exit 1
+fi
+
 # Drop the existing database to ensure it’s clean before restoring the new dump
 echo "Dropping the existing database $DATABASE_NAME"
 docker exec "$DOCKER_CONTAINER_NAME" mongo "$DATABASE_NAME" --eval "db.dropDatabase()"
@@ -37,8 +63,8 @@ fi
 
 # Restore the dump into the specified database
 echo "Restoring the dump from $FILE_NAME to database $DATABASE_NAME"
-docker exec -e MONGODUMP_FILE="/tmp/$FILE_NAME" "$DOCKER_CONTAINER_NAME" bash -c \
-    'tar xvf "$MONGODUMP_FILE" -C /tmp && mongorestore --db '"$DATABASE_NAME"' /tmp/dump/'"$COLLECTION_NAME"' --drop'
+docker exec "$DOCKER_CONTAINER_NAME" bash -c \
+    "tar xvf /tmp/$FILE_NAME -C /tmp && mongorestore --db $DATABASE_NAME /tmp/dump/$COLLECTION_NAME --drop"
 
 # Check if the restore command was successful
 if [ $? -ne 0 ]; then
