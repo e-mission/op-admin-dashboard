@@ -1,75 +1,67 @@
 #!/bin/bash
 
+# Directory of the script
+SCRIPT_DIR="$(dirname "$0")"
+
+# Path to the configuration file (one level up)
+CONFIG_FILE="$SCRIPT_DIR/../docker-compose-dev.yml"
+
 # Check if the correct number of arguments is provided
-if [ "$#" -ne 4 ]; then
-    echo "Usage: $0 <dump_file> <database_name> <docker_container_name> <collection_name>"
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <mongodump-file>"
+    echo "  <mongodump-file> : The path to the MongoDB dump file to be restored."
     exit 1
 fi
 
-# Assign arguments to variables
-MONGODUMP_FILE="$1"
-DATABASE_NAME="$2"
-DOCKER_CONTAINER_NAME="$3"
-COLLECTION_NAME="$4"
+MONGODUMP_FILE=$1
 
-# Extract the base name of the dump file for use in the restore command
+# Print debug information
+echo "Script Directory: $SCRIPT_DIR"
+echo "Configuration File Path: $CONFIG_FILE"
+echo "MongoDump File Path: $MONGODUMP_FILE"
+
+# Check if the provided file exists
+if [ ! -f "$MONGODUMP_FILE" ]; then
+    echo "Error: File '$MONGODUMP_FILE' does not exist."
+    exit 1
+fi
+
+# Check if the configuration file exists
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: Configuration file '$CONFIG_FILE' does not exist."
+    exit 1
+fi
+
+# Print details about the configuration file
+echo "Configuration file details:"
+ls -l "$CONFIG_FILE"
+
+
+# Extract DB_HOST from the YAML file
+DB_HOST=$(grep -i "DB_HOST:" "$CONFIG_FILE" | sed 's/^[^:]*: *//')
+if [ -z "$DB_HOST" ]; then
+    echo "Error: DB_HOST not found in configuration file."
+    exit 1
+fi
+
+# Extract the database name from DB_HOST
+DB_NAME=$(echo "$DB_HOST" | sed -e 's/^mongodb:\/\/[^:]*:[0-9]*\///')
+
+# Check if the database name was extracted correctly
+if [ -z "$DB_NAME" ]; then
+    echo "Error: Failed to extract database name from DB_HOST."
+    exit 1
+fi
+
+echo "Copying file to Docker container"
+docker cp "$MONGODUMP_FILE" op-admin-dashboard-db-1:/tmp
+
 FILE_NAME=$(basename "$MONGODUMP_FILE")
 
-# Paths
-SCRIPT_DIR="$(dirname "$0")"
-COMPOSE_FILE="$SCRIPT_DIR/../docker-compose-dev.yml"  # Adjust the path to the docker-compose.yml file
+echo "Clearing existing database"
+docker exec op-admin-dashboard-db-1 bash -c 'mongo --eval "db.getMongo().getDBNames().forEach(function(d) { if (d !== \"admin\" && d !== \"local\") db.getSiblingDB(d).dropDatabase(); })"'
 
-# Extract the new database host from the docker-compose file
-NEW_DB_HOST=$(grep 'DB_HOST:' "$COMPOSE_FILE" | sed 's|DB_HOST: ||')
+echo "Restoring the dump from $FILE_NAME to database $DB_NAME"
+docker exec -e MONGODUMP_FILE=$FILE_NAME op-admin-dashboard-db-1 bash -c "cd /tmp && tar xvf $FILE_NAME && mongorestore -d $DB_NAME dump/openpath_prod_ca_ebike"
 
-# Modify the docker-compose.yml to update the DB_HOST (if needed)
-echo "Updating $COMPOSE_FILE to set DB_HOST to mongodb://db:27017/$DATABASE_NAME"
-sed -i.bak "s|DB_HOST: .*|DB_HOST: mongodb://db:27017/$DATABASE_NAME|" "$COMPOSE_FILE"
-
-# Restart Docker Compose to apply changes
-echo "Restarting Docker Compose services"
-docker compose -f "$COMPOSE_FILE" down
-docker compose -f "$COMPOSE_FILE" up -d
-
-# Wait for Docker Compose to be ready
-echo "Waiting for Docker Compose services to be ready"
-sleep 10
-
-# Check if the Docker container is running
-if ! docker ps | grep -q "$DOCKER_CONTAINER_NAME"; then
-    echo "Docker container $DOCKER_CONTAINER_NAME is not running"
-    exit 1
-fi
-
-# Drop the existing database to ensure it’s clean before restoring the new dump
-echo "Dropping the existing database $DATABASE_NAME"
-docker exec "$DOCKER_CONTAINER_NAME" mongo "$DATABASE_NAME" --eval "db.dropDatabase()"
-
-# Check if the drop command was successful
-if [ $? -ne 0 ]; then
-    echo "Failed to drop the database $DATABASE_NAME"
-    exit 1
-fi
-
-# Copy the MongoDB dump file from the local machine to the Docker container
-echo "Copying file to Docker container $DOCKER_CONTAINER_NAME"
-docker cp "$MONGODUMP_FILE" "$DOCKER_CONTAINER_NAME:/tmp"
-
-# Check if the copy command was successful
-if [ $? -ne 0 ]; then
-    echo "Failed to copy the dump file to the Docker container"
-    exit 1
-fi
-
-# Restore the dump into the specified database
-echo "Restoring the dump from $FILE_NAME to database $DATABASE_NAME"
-docker exec "$DOCKER_CONTAINER_NAME" bash -c \
-    "tar xvf /tmp/$FILE_NAME -C /tmp && mongorestore --db $DATABASE_NAME /tmp/dump/$COLLECTION_NAME --drop"
-
-# Check if the restore command was successful
-if [ $? -ne 0 ]; then
-    echo "Failed to restore the dump to the database $DATABASE_NAME"
-    exit 1
-fi
-
-echo "Restore completed successfully"
+echo "Database restore complete."
