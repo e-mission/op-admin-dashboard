@@ -68,6 +68,3 @@ echo "Restoring the dump from $FILE_NAME to database $DB_NAME"
 docker exec -e MONGODUMP_FILE=$FILE_NAME op-admin-dashboard-db-1 bash -c "cd /tmp && tar xvf $FILE_NAME && mongorestore -d $DB_NAME dump/$DB_NAME"
 
 echo "Database restore complete."
-
-# Clean up temporary directory
-rm -rf "$TEMP_DIR"
