@@ -36,10 +36,11 @@ fi
 echo "Configuration file details:"
 ls -l "$CONFIG_FILE"
 
-# Extract database name from the mongodump file
-TEMP_DIR=$(mktemp -d)
-tar -xf "$MONGODUMP_FILE" -C "$TEMP_DIR"
-DB_NAME=$(find "$TEMP_DIR/dump" -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+# Extract the database name from the mongodump file
+DB_NAME=$(tar -tf "$MONGODUMP_FILE" | grep '^dump/' | sed 's|^dump/||' | awk -F'/' '{if (NF > 0) {print $1; exit}}')
+
+# Output the database name
+echo "$DB_NAME"
 
 if [ -z "$DB_NAME" ]; then
     echo "Error: Failed to extract database name from mongodump."
