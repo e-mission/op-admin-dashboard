@@ -1,11 +1,11 @@
 import logging
 import arrow
 from uuid import UUID
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import polars as pl
 import pymongo
-
+import time
 import emission.core.get_database as edb
 import emission.storage.timeseries.abstract_timeseries as esta
 import emission.storage.timeseries.aggregate_timeseries as estag
@@ -19,6 +19,7 @@ from utils import permissions as perm_utils
 from utils.datetime_utils import iso_range_to_ts_range
 
 def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude=None):
+    start_time = time.time()
     """
     Returns a list of dictionaries representing the records in the DataFrame, 
     given a column to filter on and a list of values to exclude from that column.
@@ -44,6 +45,9 @@ def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude=None):
         df = df[~df[col_to_filter].isin(vals_to_exclude)]
     
     # Return the filtered DataFrame as a list of dictionaries
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken to df_to_filtered: {execution_time:.4f} seconds')
     return df.to_dict("records")
 
 
@@ -75,6 +79,7 @@ def query_uuids(start_date: str, end_date: str, tz: str):
     # I will write a couple of functions to get all the users in a time range
     # (although we should define what that time range should be) and to merge
     # that with the profile data
+    start_time = time.time()
     entries = edb.get_uuid_db().find()
     df = pd.json_normalize(list(entries))
     if not df.empty:
@@ -82,9 +87,13 @@ def query_uuids(start_date: str, end_date: str, tz: str):
         df['user_id'] = df['uuid'].apply(str)
         df['user_token'] = df['user_email']
         df.drop(columns=["uuid", "_id"], inplace=True)
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken for Query_UUIDs: {execution_time:.4f} seconds')
     return df
 
 def query_confirmed_trips(start_date: str, end_date: str, tz: str):
+    start_time = time.time()
     (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
     ts = esta.TimeSeries.get_aggregate_time_series()
     # Note to self, allow end_ts to also be null in the timequery
@@ -189,9 +198,13 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
     # logging.debug("After filtering, df columns are %s" % df.columns)
     # logging.debug("After filtering, the actual data is %s" % df.head())
     # logging.debug("After filtering, the actual data is %s" % df.head().trip_start_time_str)
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken for Query_Confirmed_Trips: {execution_time:.4f} seconds')
     return (df, user_input_cols)
 
 def query_demographics():
+    start_time = time.time()
     # Returns dictionary of df where key represent differnt survey id and values are df for each survey
     logging.debug("Querying the demographics for (no date range)")
     ts = esta.TimeSeries.get_aggregate_time_series()
@@ -224,10 +237,14 @@ def query_demographics():
             for col in constants.EXCLUDED_DEMOGRAPHICS_COLS:
                 if col in df.columns:
                     df.drop(columns= [col], inplace=True) 
-                    
+    
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken for Query Demographic: {execution_time:.4f} seconds')
     return dataframes
 
 def query_trajectories(start_date: str, end_date: str, tz: str) -> pl.DataFrame:
+    start_time = time.time()
     # Convert ISO date range to timestamps
     start_ts, end_ts = iso_range_to_ts_range(start_date, end_date, tz)
     
@@ -261,38 +278,44 @@ def query_trajectories(start_date: str, end_date: str, tz: str) -> pl.DataFrame:
                 lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
             ).alias("data.mode_str")
         ])
-    
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken for Query Trajectory: {execution_time:.4f} seconds')
     return df
 
 
 def add_user_stats(user_data):
-    for user in user_data:
-        user_uuid = UUID(user['user_id'])
+    start_time = time.time()
 
-        total_trips = esta.TimeSeries.get_aggregate_time_series().find_entries_count(
+    time_format = 'YYYY-MM-DD HH:mm:ss'
+
+    def process_user(user):
+        user_uuid = UUID(user['user_id'])
+        
+        # Fetch aggregated data for all users at once
+        ts_aggregate = esta.TimeSeries.get_aggregate_time_series()
+        
+        total_trips = ts_aggregate.find_entries_count(
             key_list=["analysis/confirmed_trip"],
             extra_query_list=[{'user_id': user_uuid}]
         )
-        user['total_trips'] = total_trips
-
-        labeled_trips = esta.TimeSeries.get_aggregate_time_series().find_entries_count(
+        labeled_trips = ts_aggregate.find_entries_count(
             key_list=["analysis/confirmed_trip"],
             extra_query_list=[{'user_id': user_uuid}, {'data.user_input': {'$ne': {}}}]
         )
+        user['total_trips'] = total_trips
         user['labeled_trips'] = labeled_trips
-
+        
+        # Fetch profile data in bulk
         profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
-        user['platform'] = profile_data.get('curr_platform')
-        user['manufacturer'] = profile_data.get('manufacturer')
-        user['app_version'] = profile_data.get('client_app_version')
-        user['os_version'] = profile_data.get('client_os_version')
-        user['phone_lang'] = profile_data.get('phone_lang')
-
-
-
+        if profile_data:
+            user['platform'] = profile_data.get('curr_platform')
+            user['manufacturer'] = profile_data.get('manufacturer')
+            user['app_version'] = profile_data.get('client_app_version')
+            user['os_version'] = profile_data.get('client_os_version')
+            user['phone_lang'] = profile_data.get('phone_lang')
 
         if total_trips > 0:
-            time_format = 'YYYY-MM-DD HH:mm:ss'
             ts = esta.TimeSeries.get_time_series(user_uuid)
             start_ts = ts.get_first_value_for_field(
                 key='analysis/confirmed_trip',
@@ -317,7 +340,18 @@ def add_user_stats(user_data):
             )
             if last_call != -1:
                 user['last_call'] = arrow.get(last_call).format(time_format)
+        
+        return user
 
+    # Use ThreadPoolExecutor to process users in parallel
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_user, user) for user in user_data]
+        user_data = [future.result() for future in as_completed(futures)]
+
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken to add_user_stats: {execution_time:.4f} seconds')
+    
     return user_data
 
 def query_segments_crossing_endpoints(poly_region_start, poly_region_end, start_date: str, end_date: str, tz: str, excluded_uuids: list[str]):

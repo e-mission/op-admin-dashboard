@@ -6,6 +6,7 @@ The workaround is to check if the input value is None.
 from dash import dcc, html, Input, Output, callback, register_page, dash_table, State
 # Etc
 import logging
+import time
 import pandas as pd
 import polars as pl
 from dash.exceptions import PreventUpdate
@@ -32,14 +33,14 @@ layout = html.Div(
 )
 
 def clean_location_data(df: pl.DataFrame) -> pl.DataFrame:
+    start_time = time.time()
     if 'data.start_loc.coordinates' in df.columns:
-        df = df.with_columns(
-            pl.col('data.start_loc.coordinates').apply(lambda x: f'({x[0]}, {x[1]})').alias('data.start_loc.coordinates')
-        )
+        df['data.start_loc.coordinates'] = df['data.start_loc.coordinates'].apply(lambda x: f'({x[0]}, {x[1]})')
     if 'data.end_loc.coordinates' in df.columns:
-        df = df.with_columns(
-            pl.col('data.end_loc.coordinates').apply(lambda x: f'({x[0]}, {x[1]})').alias('data.end_loc.coordinates')
-        )
+        df['data.end_loc.coordinates'] = df['data.end_loc.coordinates'].apply(lambda x: f'({x[0]}, {x[1]})')
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken to clean location data: {execution_time:.4f} seconds')
     return df
 
 
