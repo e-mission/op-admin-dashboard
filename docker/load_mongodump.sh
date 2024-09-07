@@ -36,22 +36,24 @@ fi
 echo "Configuration file details:"
 ls -l "$CONFIG_FILE"
 
+# Extract database name from the mongodump file
+TEMP_DIR=$(mktemp -d)
+tar -xf "$MONGODUMP_FILE" -C "$TEMP_DIR"
+DB_NAME=$(find "$TEMP_DIR/dump" -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 
-# Extract DB_HOST from the YAML file
-DB_HOST=$(grep -i "DB_HOST:" "$CONFIG_FILE" | sed 's/^[^:]*: *//')
-if [ -z "$DB_HOST" ]; then
-    echo "Error: DB_HOST not found in configuration file."
-    exit 1
-fi
-
-# Extract the database name from DB_HOST
-DB_NAME=$(echo "$DB_HOST" | sed -e 's/^mongodb:\/\/[^:]*:[0-9]*\///')
-
-# Check if the database name was extracted correctly
 if [ -z "$DB_NAME" ]; then
-    echo "Error: Failed to extract database name from DB_HOST."
+    echo "Error: Failed to extract database name from mongodump."
     exit 1
 fi
+
+echo "Database Name: $DB_NAME"
+
+# Update the docker-compose configuration file with the actual DB_HOST
+DB_HOST="mongodb://db/$DB_NAME"
+sed -i.bak "s|DB_HOST:.*|DB_HOST: $DB_HOST|" "$CONFIG_FILE"
+
+echo "Updated docker-compose file:"
+cat "$CONFIG_FILE"
 
 echo "Copying file to Docker container"
 docker cp "$MONGODUMP_FILE" op-admin-dashboard-db-1:/tmp
@@ -62,6 +64,9 @@ echo "Clearing existing database"
 docker exec op-admin-dashboard-db-1 bash -c 'mongo --eval "db.getMongo().getDBNames().forEach(function(d) { if (d !== \"admin\" && d !== \"local\") db.getSiblingDB(d).dropDatabase(); })"'
 
 echo "Restoring the dump from $FILE_NAME to database $DB_NAME"
-docker exec -e MONGODUMP_FILE=$FILE_NAME op-admin-dashboard-db-1 bash -c "cd /tmp && tar xvf $FILE_NAME && mongorestore -d $DB_NAME dump/openpath_prod_ca_ebike"
+docker exec -e MONGODUMP_FILE=$FILE_NAME op-admin-dashboard-db-1 bash -c "cd /tmp && tar xvf $FILE_NAME && mongorestore -d $DB_NAME dump/$DB_NAME"
 
 echo "Database restore complete."
+
+# Clean up temporary directory
+rm -rf "$TEMP_DIR"
