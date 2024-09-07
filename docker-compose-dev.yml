@@ -1,3 +1,4 @@
+# docker-compose.yml
 version: "3"
 services:
   dashboard:
@@ -13,7 +14,7 @@ services:
       DASH_DEBUG_MODE: "True"
       DASH_SILENCE_ROUTES_LOGGING: "False"
       DASH_SERVER_PORT: 8050
-      DB_HOST: mongodb://db/DB_NAME
+      DB_HOST: db
       WEB_SERVER_HOST: 0.0.0.0
       SERVER_BRANCH: master
       CONFIG_PATH: "https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/configs/"
@@ -29,7 +30,7 @@ services:
       - ./app_sidebar_collapsible.py:/usr/src/app/app_sidebar_collapsible.py
     deploy:
       restart_policy:
-        condition: on-failure
+          condition: on-failure
   db:
     image: mongo:4.4.0
     deploy:
