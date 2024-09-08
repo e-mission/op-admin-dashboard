@@ -62,7 +62,7 @@ docker cp "$MONGODUMP_FILE" op-admin-dashboard-db-1:/tmp
 FILE_NAME=$(basename "$MONGODUMP_FILE")
 
 echo "Clearing existing database"
-docker exec op-admin-dashboard-db-1 bash -c 'mongo --eval "db.getMongo().getDBNames().forEach(function(d) { if (d !== \"admin\" && d !== \"local\") db.getSiblingDB(d).dropDatabase(); })"'
+docker exec op-admin-dashboard-db-1 bash -c "mongo $DB_NAME --eval 'db.dropDatabase()'"
 
 echo "Restoring the dump from $FILE_NAME to database $DB_NAME"
 docker exec -e MONGODUMP_FILE=$FILE_NAME op-admin-dashboard-db-1 bash -c "cd /tmp && tar xvf $FILE_NAME && mongorestore -d $DB_NAME dump/$DB_NAME"
