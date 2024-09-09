@@ -10,6 +10,7 @@ CONFIG_FILE="$SCRIPT_DIR/../docker-compose-dev.yml"
 if [ "$#" -ne 1 ]; then
     echo "Usage: $0 <mongodump-file>"
     echo "  <mongodump-file> : The path to the MongoDB dump file to be restored."
+    echo " run git add -f <docker compose file> after using this command"
     exit 1
 fi
 
