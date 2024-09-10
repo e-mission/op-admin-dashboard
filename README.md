@@ -173,39 +173,32 @@ the Docker Compose file. It has two possible values: "basic" and "cognito". The 
 authentication, which is a simple way to authenticate users using a username and password. The "cognito" option refers
 to Amazon Cognito, which is a user authentication service that can be used with AWS services.
 
-## `config.py`
+### Cognito Credentials
 
-The `config.py` file is a Python module that contains configuration settings for an application that uses
-authentication. To use this file, first make a copy of the provided `config-fake.py` file and rename it to `config.py`.
-Then, fill in the necessary variables with your own valid data.
+The Cognito credentials will need to be set for authentication when using AWS Cognito. The credential data can be obtained from your AWS Cognito panel. To use this authentication method, set / export the following variables as environment variables in the development environment / containers:
 
-### CognitoConfig Class
-
-The `CognitoConfig` class contains variables used for authentication when using AWS Cognito. To use this authentication
-method, fill in the following variables with your credential data from your AWS Cognito panel in `config.py`:
-
-- `CLIENT_ID`: This is a string that represents the client ID of the app that is registered with the user pool. When an
+- `COGNITO_CLIENT_ID`: This is a string that represents the client ID of the app that is registered with the user pool. When an
 app wants to authenticate with a user pool, it must provide its client_id to the user pool's authentication server.
-- `CLIENT_SECRET`: This is a string that represents the client secret of the app that is registered with the user pool.
+- `COGNITO_CLIENT_SECRET`: This is a string that represents the client secret of the app that is registered with the user pool.
 The client_secret is a secret key that is used to authenticate the app with the user pool's authentication server. It
 must be kept secure and not shared with anyone who should not have access to it.
-- `REDIRECT_URL`: This is a string that represents the URL that users should be redirected to after they have
+- `COGNITO_REDIRECT_URL`: This is a string that represents the URL that users should be redirected to after they have
 authenticated with the user pool's authentication server.
-- `TOKEN_ENDPOINT`: This is a string that represents the endpoint for retrieving access tokens from the user pool's
+- `COGNITO_TOKEN_ENDPOINT`: This is a string that represents the endpoint for retrieving access tokens from the user pool's
 authentication server. Access tokens are used by the app to access protected resources on behalf of the authenticated
 user. It is your user pool's domain plus `/oauth2/token`.
-- `USER_POOL_ID`: This is a string that represents the ID of the user pool that the app is registered with. The user
+- `COGNITO_USER_POOL_ID`: This is a string that represents the ID of the user pool that the app is registered with. The user
 pool is a collection of users who can authenticate with the app.
-- `REGION`: This is a string that represents the AWS region where the user pool is located. For example, "us-east-1" or
+- `COGNITO_REGION`: This is a string that represents the AWS region where the user pool is located. For example, "us-east-1" or
 "eu-west-2".
-- `AUTH_URL`: This is a string that represents the URL for initiating authentication requests with the user pool's
+- `COGNITO_AUTH_URL`: This is a string that represents the URL for initiating authentication requests with the user pool's
 authentication server. It is the `Hosted UI` of your user pool.
 
 ### VALID_USERNAME_PASSWORD_PAIRS
 
 The `VALID_USERNAME_PASSWORD_PAIRS` dictionary contains all the valid usernames and passwords that users can
 authenticate with when using basic authentication. To use this authentication method, fill in the dictionary with your
-own valid usernames and passwords in `config.py`.
+own valid usernames and passwords in `app_sidebar_collapsible.py`.
 
 ### Usage
 
