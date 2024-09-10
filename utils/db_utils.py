@@ -351,7 +351,7 @@ def add_user_stats(user_data):
     end_time = time.time()  # End timing
     execution_time = end_time - start_time
     logging.debug(f'Time taken to add_user_stats: {execution_time:.4f} seconds')
-    
+        
     return user_data
 
 def query_segments_crossing_endpoints(poly_region_start, poly_region_end, start_date: str, end_date: str, tz: str, excluded_uuids: list[str]):
