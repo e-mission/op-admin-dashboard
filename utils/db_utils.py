@@ -17,6 +17,7 @@ import emission.storage.decorations.section_queries as esds
 from utils import constants
 from utils import permissions as perm_utils
 from utils.datetime_utils import iso_range_to_ts_range
+from functools import lru_cache
 
 def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude=None):
     start_time = time.time()
@@ -283,17 +284,26 @@ def query_trajectories(start_date: str, end_date: str, tz: str) -> pl.DataFrame:
     logging.debug(f'Time taken for Query Trajectory: {execution_time:.4f} seconds')
     return df
 
+@lru_cache(maxsize=None)
+def get_time_series_aggregate():
+    return esta.TimeSeries.get_aggregate_time_series()
 
-def add_user_stats(user_data):
+@lru_cache(maxsize=None)
+def get_user_profile(user_uuid):
+    return edb.get_profile_db().find_one({'user_id': user_uuid})
+
+def add_user_stats(user_data, batch_size=50):
     start_time = time.time()
-
     time_format = 'YYYY-MM-DD HH:mm:ss'
 
     def process_user(user):
         user_uuid = UUID(user['user_id'])
         
-        # Fetch aggregated data for all users at once
-        ts_aggregate = esta.TimeSeries.get_aggregate_time_series()
+        # Fetch aggregated data for all users once and cache it
+        ts_aggregate = get_time_series_aggregate()
+
+        # Fetch data for the user, cached for repeated queries
+        profile_data = get_user_profile(user_uuid)
         
         total_trips = ts_aggregate.find_entries_count(
             key_list=["analysis/confirmed_trip"],
@@ -303,11 +313,10 @@ def add_user_stats(user_data):
             key_list=["analysis/confirmed_trip"],
             extra_query_list=[{'user_id': user_uuid}, {'data.user_input': {'$ne': {}}}]
         )
+        
         user['total_trips'] = total_trips
         user['labeled_trips'] = labeled_trips
-        
-        # Fetch profile data in bulk
-        profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
+
         if profile_data:
             user['platform'] = profile_data.get('curr_platform')
             user['manufacturer'] = profile_data.get('manufacturer')
@@ -317,42 +326,53 @@ def add_user_stats(user_data):
 
         if total_trips > 0:
             ts = esta.TimeSeries.get_time_series(user_uuid)
-            start_ts = ts.get_first_value_for_field(
+            first_trip_ts = ts.get_first_value_for_field(
                 key='analysis/confirmed_trip',
                 field='data.end_ts',
                 sort_order=pymongo.ASCENDING
             )
-            if start_ts != -1:
-                user['first_trip'] = arrow.get(start_ts).format(time_format)
+            if first_trip_ts != -1:
+                user['first_trip'] = arrow.get(first_trip_ts).format(time_format)
 
-            end_ts = ts.get_first_value_for_field(
+            last_trip_ts = ts.get_first_value_for_field(
                 key='analysis/confirmed_trip',
                 field='data.end_ts',
                 sort_order=pymongo.DESCENDING
             )
-            if end_ts != -1:
-                user['last_trip'] = arrow.get(end_ts).format(time_format)
+            if last_trip_ts != -1:
+                user['last_trip'] = arrow.get(last_trip_ts).format(time_format)
 
-            last_call = ts.get_first_value_for_field(
+            last_call_ts = ts.get_first_value_for_field(
                 key='stats/server_api_time',
                 field='data.ts',
                 sort_order=pymongo.DESCENDING
             )
-            if last_call != -1:
-                user['last_call'] = arrow.get(last_call).format(time_format)
+            if last_call_ts != -1:
+                user['last_call'] = arrow.get(last_call_ts).format(time_format)
         
         return user
 
-    # Use ThreadPoolExecutor to process users in parallel
-    with ThreadPoolExecutor() as executor:
-        futures = [executor.submit(process_user, user) for user in user_data]
-        user_data = [future.result() for future in as_completed(futures)]
+    def batch_process(users_batch):
+        with ThreadPoolExecutor(max_workers=8) as executor:  # Adjust max_workers based on CPU cores
+            futures = [executor.submit(process_user, user) for user in users_batch]
+            processed_batch = [future.result() for future in as_completed(futures)]
+        return processed_batch
+
+    total_users = len(user_data)
+    processed_data = []
+
+    for i in range(0, total_users, batch_size):
+        batch = user_data[i:i + batch_size]
+        processed_batch = batch_process(batch)
+        processed_data.extend(processed_batch)
+
+        logging.debug(f'Processed {len(processed_data)} users out of {total_users}')
 
     end_time = time.time()  # End timing
     execution_time = end_time - start_time
     logging.debug(f'Time taken to add_user_stats: {execution_time:.4f} seconds')
-        
-    return user_data
+
+    return processed_data
 
 def query_segments_crossing_endpoints(poly_region_start, poly_region_end, start_date: str, end_date: str, tz: str, excluded_uuids: list[str]):
     (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
