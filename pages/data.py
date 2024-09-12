@@ -3,7 +3,7 @@ Note that the callback will trigger even if prevent_initial_call=True. This is b
 Since the dcc.Location component is not in the layout when navigating to this page, it triggers the callback.
 The workaround is to check if the input value is None.
 """
-from dash import dcc, html, Input, Output, callback, register_page, dash_table, State
+from dash import dcc, html, Input, Output, callback, register_page, dash_table, State, callback_context
 # Etc
 import logging
 import time
@@ -30,10 +30,11 @@ layout = html.Div(
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
         html.Div(id='tabs-content'),
+        html.Button('Load More Data', id='load-more-button', n_clicks=0, style={'marginTop': '10px', 'display': 'none'}),  # Button initially hidden
         dcc.Store(id='store-loaded-uuids', data={'loaded': False, 'data': []}),  # Store to hold loaded data chunks
-        html.Button('Load More Data', id='load-more-button', n_clicks=0)  # New button to load more data
     ]
 )
+
 
 
 def clean_location_data(df: pl.DataFrame) -> pl.DataFrame:
@@ -61,6 +62,7 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
 @callback(
     Output('tabs-content', 'children'),
     Output('store-loaded-uuids', 'data'),
+    Output('load-more-button', 'style'),  # Output to control button visibility
     Input('tabs-datatable', 'value'),
     Input('store-uuids', 'data'),
     Input('store-excluded-uuids', 'data'),
@@ -70,22 +72,35 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
     Input('date-picker', 'start_date'),
     Input('date-picker', 'end_date'),
     Input('date-picker-timezone', 'value'),
-    Input('store-loaded-uuids', 'data'),  # Store containing loaded UUIDs
-    Input('load-more-button', 'n_clicks')  # Input from the load more button
+    Input('store-loaded-uuids', 'data'),
+    Input('load-more-button', 'n_clicks')  # Capture clicks
 )
 def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date, timezone, loaded_uuids_store, n_clicks):
     data, columns, has_perm = None, [], False
+    initial_batch_size = 10
+    button_style = {'marginTop': '10px', 'display': 'none'}  # Default: button hidden
+
+    # Retrieve already loaded data from the store
     loaded_data = loaded_uuids_store.get('data', [])
-    initial_batch_size = 50
+    total_loaded = len(loaded_data)
 
     # Handle the UUIDs datatable tab
     if tab == 'tab-uuids-datatable':
-        # Check if we are loading more data from the button click
-        if n_clicks > 0 and not loaded_uuids_store.get('loaded', False):  # Load more on button click
-            remaining_data = store_uuids["data"][len(loaded_data):len(loaded_data) + initial_batch_size]
-            if remaining_data:
-                processed_chunk = db_utils.add_user_stats(remaining_data)
-                loaded_data.extend(processed_chunk)
+        # Show the button for UUIDs tab
+        button_style = {'marginTop': '10px', 'display': 'block'}
+
+        # Calculate how many more items to load
+        total_to_load = initial_batch_size * (n_clicks + 1)
+
+        # Fetch only the new data that hasn't been loaded yet
+        if total_to_load > total_loaded:
+            new_data = store_uuids["data"][total_loaded:total_to_load]  # Only fetch the next batch
+
+            if new_data:
+                processed_data = db_utils.add_user_stats(new_data)
+                loaded_data.extend(processed_data)  # Append new data to the already loaded data
+
+                # Update the store with the appended data
                 loaded_uuids_store['data'] = loaded_data
                 loaded_uuids_store['loaded'] = len(loaded_data) >= len(store_uuids["data"])
 
@@ -93,14 +108,16 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
         columns = perm_utils.get_uuids_columns()
         df = pd.DataFrame(loaded_data)
         if df.empty or not perm_utils.has_permission('data_uuids'):
-            return None, loaded_uuids_store
+            return html.Div([
+                html.P("No data available or you don't have permission.")
+            ]), loaded_uuids_store, button_style
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
-        return populate_datatable(df), loaded_uuids_store
 
-    # Handle the other tabs as usual (no change here)
+        return html.Div([populate_datatable(df)]), loaded_uuids_store, button_style
+
+    # Handle other tabs normally
     elif tab == 'tab-trips-datatable':
-        # Handle the trips data
         data = store_trips["data"]
         columns = perm_utils.get_allowed_trip_columns()
         columns.update(col['label'] for col in perm_utils.get_allowed_named_trip_columns())
@@ -109,7 +126,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
-            return None, loaded_uuids_store
+            return None, loaded_uuids_store, button_style
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
         df = clean_location_data(df)
@@ -118,10 +135,9 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
         return html.Div([
             html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
             trips_table
-        ]), loaded_uuids_store
+        ]), loaded_uuids_store, button_style
 
     elif tab == 'tab-demographics-datatable':
-        # Handle demographics data
         data = store_demographics["data"]
         has_perm = perm_utils.has_permission('data_demographics')
 
@@ -130,16 +146,15 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
             columns = list(data[0].keys())
         elif len(data) > 1:
             if not has_perm:
-                return None, loaded_uuids_store
+                return None, loaded_uuids_store, button_style
             return html.Div([
                 dcc.Tabs(id='subtabs-demographics', value=list(data.keys())[0], children=[
                     dcc.Tab(label=key, value=key) for key in data
                 ]),
                 html.Div(id='subtabs-demographics-content')
-            ]), loaded_uuids_store
+            ]), loaded_uuids_store, button_style
 
     elif tab == 'tab-trajectories-datatable':
-        # Handle trajectory data
         (start_date, end_date) = iso_to_date_only(start_date, end_date)
         if store_trajectories == {}:
             store_trajectories = update_store_trajectories(start_date, end_date, timezone, store_excluded_uuids)
@@ -151,13 +166,13 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
-            return None, loaded_uuids_store
+            return None, loaded_uuids_store, button_style
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
-        return populate_datatable(df), loaded_uuids_store
+        return populate_datatable(df), loaded_uuids_store, button_style
 
     # Default case: if no data is loaded or the tab is not handled
-    return None, loaded_uuids_store
+    return None, loaded_uuids_store, button_style
 
 
 # handle subtabs for demographic table when there are multiple surveys
