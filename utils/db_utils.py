@@ -272,7 +272,7 @@ def get_time_series_aggregate():
 def get_user_profile(user_uuid):
     return edb.get_profile_db().find_one({'user_id': user_uuid})
 
-def add_user_stats(user_data, batch_size=50):
+def add_user_stats(user_data, batch_size=10):
     start_time = time.time()
     time_format = 'YYYY-MM-DD HH:mm:ss'
 
@@ -333,7 +333,7 @@ def add_user_stats(user_data, batch_size=50):
         return user
 
     def batch_process(users_batch):
-        with ThreadPoolExecutor(max_workers=8) as executor:  # Adjust max_workers based on CPU cores
+        with ThreadPoolExecutor() as executor:  # Adjust max_workers based on CPU cores
             futures = [executor.submit(process_user, user) for user in users_batch]
             processed_batch = [future.result() for future in as_completed(futures)]
         return processed_batch
