@@ -94,7 +94,26 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
         # Add primary modes from the sensed, inferred and ble summaries. Note that we do this
         # **before** filtering the `all_trip_columns` because the
         # *_section_summary columns are not currently valid
-        get_max_mode_from_summary = lambda md: max(md["distance"], key=md["distance"].get) if len(md["distance"]) > 0 else "INVALID"
+        
+        # Check if 'md' is not a dictionary or does not contain the key 'distance'
+        # or if 'md["distance"]' is not a dictionary.
+        # If any of these conditions are true, return "INVALID".
+        get_max_mode_from_summary = lambda md: (
+            "INVALID"
+            if not isinstance(md, dict)
+            or "distance" not in md
+            or not isinstance(md["distance"], dict)
+            # If 'md' is a dictionary and 'distance' is a valid key pointing to a dictionary:
+            else (
+                # Get the maximum value from 'md["distance"]' using the values of 'md["distance"].get' as the key for 'max'.
+                # This operation only happens if the length of 'md["distance"]' is greater than 0.
+                # Otherwise, return "INVALID".
+                max(md["distance"], key=md["distance"].get)
+                if len(md["distance"]) > 0
+                else "INVALID"
+            )
+        )
+
         df["data.primary_sensed_mode"] = df.cleaned_section_summary.apply(get_max_mode_from_summary)
         df["data.primary_predicted_mode"] = df.inferred_section_summary.apply(get_max_mode_from_summary)
         if 'ble_sensed_summary' in df.columns:
