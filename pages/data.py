@@ -8,7 +8,6 @@ from dash import dcc, html, Input, Output, callback, register_page, dash_table, 
 import logging
 import time
 import pandas as pd
-import polars as pl
 from dash.exceptions import PreventUpdate
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils import constants
@@ -37,17 +36,12 @@ layout = html.Div(
 
 
 
-def clean_location_data(df: pl.DataFrame) -> pl.DataFrame:
-    start_time = time.time()
+def clean_location_data(df):
     if 'data.start_loc.coordinates' in df.columns:
         df['data.start_loc.coordinates'] = df['data.start_loc.coordinates'].apply(lambda x: f'({x[0]}, {x[1]})')
     if 'data.end_loc.coordinates' in df.columns:
         df['data.end_loc.coordinates'] = df['data.end_loc.coordinates'].apply(lambda x: f'({x[0]}, {x[1]})')
-    end_time = time.time()  # End timing
-    execution_time = end_time - start_time
-    logging.debug(f'Time taken to clean location data: {execution_time:.4f} seconds')
     return df
-
 
 def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids):
     df = query_trajectories(start_date, end_date, tz)

@@ -3,7 +3,6 @@ import arrow
 from uuid import UUID
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
-import polars as pl
 import pymongo
 import time
 import emission.core.get_database as edb
@@ -244,44 +243,25 @@ def query_demographics():
     logging.debug(f'Time taken for Query Demographic: {execution_time:.4f} seconds')
     return dataframes
 
-def query_trajectories(start_date: str, end_date: str, tz: str) -> pl.DataFrame:
-    start_time = time.time()
-    # Convert ISO date range to timestamps
-    start_ts, end_ts = iso_range_to_ts_range(start_date, end_date, tz)
+def query_trajectories(start_date: str, end_date: str, tz: str):
     
-    # Retrieve the time series data
+    (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
     ts = esta.TimeSeries.get_aggregate_time_series()
     entries = ts.find_entries(
         key_list=["analysis/recreated_location"],
         time_query=estt.TimeQuery("data.ts", start_ts, end_ts),
     )
-    
-    # Normalize JSON entries into a Polars DataFrame
-    df = pl.DataFrame(entries)
-    
-    if df.shape[0] > 0:
-        # Convert all object columns to strings
-        df = df.with_columns([
-            pl.col(col).cast(pl.Utf8) for col in df.columns if df[col].dtype == 'object'
-        ])
-        
-        # Drop columns starting with "metadata"
-        metadata_cols = [col for col in df.columns if col.startswith("metadata")]
-        df = df.drop(metadata_cols)
-        
-        # Drop columns listed in EXCLUDED_TRAJECTORIES_COLS
-        excluded_cols = [col for col in constants.EXCLUDED_TRAJECTORIES_COLS if col in df.columns]
-        df = df.drop(excluded_cols)
-        
-        # Map 'data.mode' to its string representation
-        df = df.with_columns([
-            pl.col("data.mode").apply(
-                lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
-            ).alias("data.mode_str")
-        ])
-    end_time = time.time()  # End timing
-    execution_time = end_time - start_time
-    logging.debug(f'Time taken for Query Trajectory: {execution_time:.4f} seconds')
+    df = pd.json_normalize(list(entries))
+    if not df.empty:
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                df[col] = df[col].apply(str)
+        columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
+        df.drop(columns= columns_to_drop, inplace=True) 
+        for col in constants.EXCLUDED_TRAJECTORIES_COLS:
+            if col in df.columns:
+                df.drop(columns= [col], inplace=True) 
+        df['data.mode_str'] = df['data.mode'].apply(lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN')
     return df
 
 @lru_cache(maxsize=None)
