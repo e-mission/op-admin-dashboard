@@ -29,7 +29,7 @@ layout = html.Div(
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
         html.Div(id='tabs-content'),
-        dcc.Interval(id='interval-load-more', interval=7000, n_intervals=0),  # Interval triggers every second
+        dcc.Interval(id='interval-load-more', interval=7000, n_intervals=0), 
         dcc.Store(id='store-uuids', data=[]),  # Store to hold the original UUIDs data
         dcc.Store(id='store-loaded-uuids', data={'data': [], 'loaded': False})  # Store to track loaded data
     ]
@@ -55,21 +55,23 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
 
 
 @callback(
-    Output('tabs-content', 'children'),        # Output to update the content
-    Output('store-loaded-uuids', 'data'),      # Output to store loaded UUIDs data
+    Output('tabs-content', 'children'),
+    Output('store-loaded-uuids', 'data'),
     Output('interval-load-more', 'disabled'),  # Disable interval when all data is loaded
-    Input('tabs-datatable', 'value'),          # The current active tab
-    Input('store-uuids', 'data'),              # Store containing the original UUIDs data
-    Input('store-trips', 'data'),              # Store for trips data
-    Input('store-demographics', 'data'),       # Store for demographics data
-    Input('store-trajectories', 'data'),       # Store for trajectories data
-    Input('date-picker', 'start_date'),        # Date picker input
-    Input('date-picker', 'end_date'),          # Date picker input
+    Input('tabs-datatable', 'value'),
+    Input('store-uuids', 'data'),
+    Input('store-excluded-uuids', 'data'),
+    Input('store-trips', 'data'),
+    Input('store-demographics', 'data'),
+    Input('store-trajectories', 'data'),
+    Input('date-picker', 'start_date'),
+    Input('date-picker', 'end_date'),
+    Input('date-picker-timezone', 'value'),
     Input('interval-load-more', 'n_intervals'),# Interval to trigger the loading of more data
-    State('store-loaded-uuids', 'data'),       # Store of currently loaded UUIDs
-    State('store-loaded-uuids', 'loaded')      # Flag to track if all UUID data has been loaded
+    State('store-loaded-uuids', 'data'),  # Use State to track already loaded data
+    State('store-loaded-uuids', 'loaded'),  # Keep track if we have finished loading all data
 )
-def render_content(tab, store_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date, n_intervals, loaded_uuids_store, all_data_loaded):
+def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date, timezone, n_intervals, loaded_uuids_store, all_data_loaded):
     initial_batch_size = 10  # Define the batch size for loading UUIDs
 
     logging.debug("Starting render_content callback.")
@@ -106,7 +108,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
 
         if new_data:
             # Process and append the new data to the loaded store
-            processed_data = db_utils.add_user_stats(new_data)  # Example of data processing
+            processed_data = db_utils.add_user_stats(new_data)
             loaded_data.extend(processed_data)
 
             # Create a Patch object to append data progressively
@@ -133,6 +135,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
         logging.debug("Returning patched data to update the UI.")
         return html.Div([populate_datatable(df)]), loaded_uuids_store, False if not loaded_uuids_store['loaded'] else True
 
+
     # Handle other tabs normally
     elif tab == 'tab-trips-datatable':
         data = store_trips["data"]
@@ -143,16 +146,17 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
 
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
-            return None, loaded_uuids_store
+            return None, loaded_uuids_store, True
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
         df = clean_location_data(df)
 
         trips_table = populate_datatable(df, 'trips-table')
+        logging.debug(f"Returning 3 values: {trips_table}, {loaded_uuids_store}, True")
         return html.Div([
             html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
             trips_table
-        ]), loaded_uuids_store
+        ]), loaded_uuids_store, True
 
     elif tab == 'tab-demographics-datatable':
         data = store_demographics["data"]
@@ -169,7 +173,7 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
                     dcc.Tab(label=key, value=key) for key in data
                 ]),
                 html.Div(id='subtabs-demographics-content')
-            ]), loaded_uuids_store
+            ]), loaded_uuids_store, True
 
     elif tab == 'tab-trajectories-datatable':
         (start_date, end_date) = iso_to_date_only(start_date, end_date)
@@ -186,10 +190,10 @@ def render_content(tab, store_uuids, store_trips, store_demographics, store_traj
             return None, loaded_uuids_store
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
-        return populate_datatable(df), loaded_uuids_store
+        return populate_datatable(df), loaded_uuids_store, True
 
     # Default case: if no data is loaded or the tab is not handled
-    return None, loaded_uuids_store
+    return None, loaded_uuids_store, True
 
 
 # handle subtabs for demographic table when there are multiple surveys
