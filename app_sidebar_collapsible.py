@@ -210,15 +210,15 @@ def make_controls():
              'flex-direction': 'column'}
   )
 
-page_content = dcc.Loading(
-    type='default',
-    fullscreen=True,
-    children=html.Div(dash.page_container, style={
+page_content = html.Div(
+    dash.page_container, 
+    style={
         "margin-left": "5rem",
         "margin-right": "2rem",
         "padding": "2rem 1rem",
-    })
+    }
 )
+
 
 
 def make_home_page(): return [
