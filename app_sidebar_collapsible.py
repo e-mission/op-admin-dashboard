@@ -210,6 +210,8 @@ def make_controls():
              'flex-direction': 'column'}
   )
 
+# Dcc Loading removed for Data Page Lazy Loading.
+# TODO Figure out how to enable Loading on everything BUT Data Page UUIDs Tab
 page_content = html.Div(
     dash.page_container, 
     style={

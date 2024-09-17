@@ -29,7 +29,7 @@ layout = html.Div(
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
         html.Div(id='tabs-content'),
-        dcc.Interval(id='interval-load-more', interval=7000, n_intervals=0), 
+        dcc.Interval(id='interval-load-more', interval=6000, n_intervals=0), 
         dcc.Store(id='store-uuids', data=[]),  # Store to hold the original UUIDs data
         dcc.Store(id='store-loaded-uuids', data={'data': [], 'loaded': False})  # Store to track loaded data
     ]
@@ -74,11 +74,6 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
 def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date, timezone, n_intervals, loaded_uuids_store, all_data_loaded):
     initial_batch_size = 10  # Define the batch size for loading UUIDs
 
-    logging.debug("Starting render_content callback.")
-    logging.debug(f"Current tab: {tab}")
-    logging.debug(f"Loaded data so far: {len(loaded_uuids_store.get('data', []))}")
-    logging.debug(f"Is all data loaded? {loaded_uuids_store.get('loaded', False)}")
-
     # Ensure store_uuids contains the key 'data' which is a list of dictionaries
     if not isinstance(store_uuids, dict) or 'data' not in store_uuids:
         logging.error(f"Expected store_uuids to be a dict with a 'data' key, but got {type(store_uuids)}")
@@ -108,7 +103,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
         if new_data:
             # Process and append the new data to the loaded store
-            processed_data = db_utils.add_user_stats(new_data)
+            processed_data = db_utils.add_user_stats(new_data, initial_batch_size)
             loaded_data.extend(processed_data)
 
             # Create a Patch object to append data progressively

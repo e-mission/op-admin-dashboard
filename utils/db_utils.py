@@ -20,15 +20,6 @@ from functools import lru_cache
 
 def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude=None):
     start_time = time.time()
-    """
-    Returns a list of dictionaries representing the records in the DataFrame, 
-    given a column to filter on and a list of values to exclude from that column.
-    
-    :param df: The pandas DataFrame to filter.
-    :param col_to_filter: The column name to filter on.
-    :param vals_to_exclude: List of values to exclude from the filtering.
-    :return: List of dictionaries representing filtered DataFrame records.
-    """
     # Check if df is a valid DataFrame and if it is empty
     if not isinstance(df, pd.DataFrame) or len(df) == 0:
         return []
@@ -272,7 +263,7 @@ def get_time_series_aggregate():
 def get_user_profile(user_uuid):
     return edb.get_profile_db().find_one({'user_id': user_uuid})
 
-def add_user_stats(user_data, batch_size=10):
+def add_user_stats(user_data, batch_size=5):
     start_time = time.time()
     time_format = 'YYYY-MM-DD HH:mm:ss'
 
