@@ -13,6 +13,9 @@ import plotly.express as px
 # Etc
 import pandas as pd
 import arrow
+import time
+import logging
+from concurrent.futures import ThreadPoolExecutor
 
 # e-mission modules
 import emission.core.get_database as edb
@@ -123,8 +126,12 @@ def generate_card(title_text, body_text, icon):
     Input('store-uuids', 'data'),
 )
 def update_card_users(store_uuids):
+    start_time = time.time()
     number_of_users = store_uuids.get('length') if has_permission('overview_users') else 0
     card = generate_card("# Users", f"{number_of_users} users", "fa fa-users")
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken to update card users: {execution_time:.4f} seconds')
     return card
 
 
@@ -133,12 +140,28 @@ def update_card_users(store_uuids):
     Input('store-uuids', 'data'),
 )
 def update_card_active_users(store_uuids):
+    start_time = time.time()
+
+    # Convert the UUIDs into a DataFrame
     uuid_df = pd.DataFrame(store_uuids.get('data'))
     number_of_active_users = 0
+
     if not uuid_df.empty and has_permission('overview_active_users'):
         one_day = 24 * 60 * 60
-        number_of_active_users = get_number_of_active_users(uuid_df['user_id'], one_day)
+
+        # Parallelize the call to get the number of active users
+        with ThreadPoolExecutor() as executor:
+            future = executor.submit(get_number_of_active_users, uuid_df['user_id'], one_day)
+            number_of_active_users = future.result()
+
+    # Generate the card
     card = generate_card("# Active users", f"{number_of_active_users} users", "fa fa-person-walking")
+
+    # End timing
+    end_time = time.time()
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken to update card active users: {execution_time:.4f} seconds')
+
     return card
 
 
@@ -147,8 +170,12 @@ def update_card_active_users(store_uuids):
     Input('store-trips', 'data'),
 )
 def update_card_trips(store_trips):
+    start_time = time.time()
     number_of_trips = store_trips.get('length') if has_permission('overview_trips') else 0
     card = generate_card("# Confirmed trips", f"{number_of_trips} trips", "fa fa-angles-right")
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken to update card trips: {execution_time:.4f} seconds')
     return card
 
 
@@ -165,11 +192,15 @@ def generate_barplot(data, x, y, title):
     Input('store-uuids', 'data'),
 )
 def generate_plot_sign_up_trend(store_uuids):
+    start_time = time.time()
     df = pd.DataFrame(store_uuids.get("data"))
     trend_df = None
     if not df.empty and has_permission('overview_signup_trends'):
         trend_df = compute_sign_up_trend(df)
     fig = generate_barplot(trend_df, x = 'date', y = 'count', title = "Sign-ups trend")
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken to generate plot sign up trend: {execution_time:.4f} seconds')
     return fig
 
 
@@ -180,10 +211,14 @@ def generate_plot_sign_up_trend(store_uuids):
     Input('date-picker', 'end_date'), # these are ISO strings
 )
 def generate_plot_trips_trend(store_trips, start_date, end_date):
+    start_time = time.time()
     df = pd.DataFrame(store_trips.get("data"))
     trend_df = None
     (start_date, end_date) = iso_to_date_only(start_date, end_date)
     if not df.empty and has_permission('overview_trips_trend'):
         trend_df = compute_trips_trend(df, date_col = "trip_start_time_str")
     fig = generate_barplot(trend_df, x = 'date', y = 'count', title = f"Trips trend({start_date} to {end_date})")
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken to generate plot trips trend: {execution_time:.4f} seconds')
     return fig
