@@ -29,7 +29,7 @@ layout = html.Div(
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
         html.Div(id='tabs-content'),
-        dcc.Interval(id='interval-load-more', interval=6000, n_intervals=0), 
+        dcc.Interval(id='interval-load-more', interval=10000, n_intervals=0), 
         dcc.Store(id='store-uuids', data=[]),  # Store to hold the original UUIDs data
         dcc.Store(id='store-loaded-uuids', data={'data': [], 'loaded': False})  # Store to track loaded data
     ]
@@ -106,10 +106,6 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
             processed_data = db_utils.add_user_stats(new_data, initial_batch_size)
             loaded_data.extend(processed_data)
 
-            # Create a Patch object to append data progressively
-            patched_data = Patch()
-            patched_data['data'] = processed_data
-
             # Update the store with the new data
             loaded_uuids_store['data'] = loaded_data
             loaded_uuids_store['loaded'] = len(loaded_data) >= len(uuids_list)  # Mark all data as loaded if done
@@ -126,8 +122,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
-        # Use the Patch() object to append new data instead of fully replacing the table
-        logging.debug("Returning patched data to update the UI.")
+        logging.debug("Returning appened data to update the UI.")
         return html.Div([populate_datatable(df)]), loaded_uuids_store, False if not loaded_uuids_store['loaded'] else True
 
 
