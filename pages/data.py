@@ -29,7 +29,7 @@ layout = html.Div(
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
         html.Div(id='tabs-content'),
-        dcc.Interval(id='interval-load-more', interval=10000, n_intervals=0), 
+        dcc.Interval(id='interval-load-more', interval=10000, n_intervals=0), # default loading at 10s, can be lowered or hightened based on perf (usual process local is 3s)
         dcc.Store(id='store-uuids', data=[]),  # Store to hold the original UUIDs data
         dcc.Store(id='store-loaded-uuids', data={'data': [], 'loaded': False})  # Store to track loaded data
     ]

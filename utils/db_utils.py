@@ -235,7 +235,6 @@ def query_demographics():
     return dataframes
 
 def query_trajectories(start_date: str, end_date: str, tz: str):
-    
     (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
     ts = esta.TimeSeries.get_aggregate_time_series()
     entries = ts.find_entries(
@@ -255,14 +254,6 @@ def query_trajectories(start_date: str, end_date: str, tz: str):
         df['data.mode_str'] = df['data.mode'].apply(lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN')
     return df
 
-@lru_cache(maxsize=None)
-def get_time_series_aggregate():
-    return esta.TimeSeries.get_aggregate_time_series()
-
-@lru_cache(maxsize=None)
-def get_user_profile(user_uuid):
-    return edb.get_profile_db().find_one({'user_id': user_uuid})
-
 def add_user_stats(user_data, batch_size=5):
     start_time = time.time()
     time_format = 'YYYY-MM-DD HH:mm:ss'
@@ -271,10 +262,10 @@ def add_user_stats(user_data, batch_size=5):
         user_uuid = UUID(user['user_id'])
         
         # Fetch aggregated data for all users once and cache it
-        ts_aggregate = get_time_series_aggregate()
+        ts_aggregate = esta.TimeSeries.get_aggregate_time_series()
 
         # Fetch data for the user, cached for repeated queries
-        profile_data = get_user_profile(user_uuid)
+        profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
         
         total_trips = ts_aggregate.find_entries_count(
             key_list=["analysis/confirmed_trip"],
