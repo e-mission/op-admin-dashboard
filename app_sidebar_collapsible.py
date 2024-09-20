@@ -27,6 +27,7 @@ if os.getenv('DASH_DEBUG_MODE', 'True').lower() == 'true':
 from utils.datetime_utils import iso_to_date_only
 from utils.db_utils import df_to_filtered_records, query_uuids, query_confirmed_trips, query_demographics, add_user_stats
 from utils.permissions import has_permission, config
+
 import flask_talisman as flt
 
 
@@ -153,7 +154,7 @@ include_test_users = config.get('metrics', {}).get('include_test_users')
 def make_controls():
   # according to docs, DatePickerRange will accept YYYY-MM-DD format
   today_date = arrow.now().format('YYYY-MM-DD')
-  last_week_date = arrow.now().shift(days=-7).format('YYYY-MM-DD')
+  last_week_date = arrow.now().shift(days=-120).format('YYYY-MM-DD')
   tomorrow_date = arrow.now().shift(days=1).format('YYYY-MM-DD')
   return html.Div([
       html.Div([
@@ -310,6 +311,20 @@ def update_store_uuids(start_date, end_date, timezone, excluded_subgroups):
         "length": len(excluded_uuids_list),
     }
     return store_uuids, store_excluded_uuids
+
+# Load data stores
+@app.callback(
+    Output("store-user-stats", "data"),
+    Input('store-uuids', "data"),  
+)
+def update_user_stats(store_uuids):
+    data = store_uuids["data"][:25]
+    records = add_user_stats(data)
+    store = {
+        "data": records,
+        "length": len(records),
+    }
+    return store
 
 
 @app.callback(
