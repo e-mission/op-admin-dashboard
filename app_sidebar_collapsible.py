@@ -30,6 +30,7 @@ from utils.permissions import has_permission, config
 import flask_talisman as flt
 
 
+
 OPENPATH_LOGO = os.path.join(os.getcwd(), "assets/openpath-logo.jpg")
 encoded_image = base64.b64encode(open(OPENPATH_LOGO, 'rb').read()).decode("utf-8")
 auth_type = os.getenv('AUTH_TYPE')
