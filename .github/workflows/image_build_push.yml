@@ -62,7 +62,7 @@ jobs:
 
     - name: Update .env file 
       run: |
-        echo "ADMIN_DASH_IMAGE_TAG=${{ steps.date.outputs.date }}" > .env
+        echo "ADMIN_DASH_IMAGE_TAG=${GITHUB_REF##*/}_${{ steps.date.outputs.date }}" > .env
         echo "SERVER_IMAGE_TAG=${{ steps.get-server-tag.outputs.SERVER_IMAGE_TAG }}" >> .env
 
     - name: Add, Commit, Push changes to .env file
