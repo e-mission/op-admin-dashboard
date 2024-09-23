@@ -312,20 +312,6 @@ def update_store_uuids(start_date, end_date, timezone, excluded_subgroups):
     }
     return store_uuids, store_excluded_uuids
 
-# Load data stores
-@app.callback(
-    Output("store-user-stats", "data"),
-    Input('store-uuids', "data"),  
-)
-def update_user_stats(store_uuids):
-    data = store_uuids["data"][:25]
-    records = add_user_stats(data)
-    store = {
-        "data": records,
-        "length": len(records),
-    }
-    return store
-
 
 @app.callback(
     Output("store-demographics", "data"),
