@@ -76,16 +76,3 @@ jobs:
           git commit -m "Updated docker image tags in .env file to the latest timestamp"
           git push origin 
         fi
-
-    - name: Create artifact text file
-      run: |
-          echo ${{ steps.date.outputs.date }} > admin_dash_tag_file.txt
-          echo "Created tag text file"
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-          name: admin-dash-image-tag
-          path: admin_dash_tag_file.txt
-          overwrite: true
-  
