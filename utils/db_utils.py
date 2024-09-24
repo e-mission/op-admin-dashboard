@@ -234,25 +234,45 @@ def query_demographics():
     logging.debug(f'Time taken for Query Demographic: {execution_time:.4f} seconds')
     return dataframes
 
-def query_trajectories(start_date: str, end_date: str, tz: str):
+def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
     (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
     ts = esta.TimeSeries.get_aggregate_time_series()
+
+    # Check if key_list contains 'background/location'
+    key_list = [key_list]
     entries = ts.find_entries(
-        key_list=["analysis/recreated_location"],
+        key_list=key_list,
         time_query=estt.TimeQuery("data.ts", start_ts, end_ts),
     )
     df = pd.json_normalize(list(entries))
+
     if not df.empty:
         for col in df.columns:
             if df[col].dtype == 'object':
                 df[col] = df[col].apply(str)
+
+        # Drop metadata columns
         columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
-        df.drop(columns= columns_to_drop, inplace=True) 
+        df.drop(columns=columns_to_drop, inplace=True)
+
+        # Drop or modify excluded columns
         for col in constants.EXCLUDED_TRAJECTORIES_COLS:
             if col in df.columns:
-                df.drop(columns= [col], inplace=True) 
-        df['data.mode_str'] = df['data.mode'].apply(lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN')
+                df.drop(columns=[col], inplace=True)
+
+        # Check if 'background/location' is in the key_list
+        if 'background/location' in key_list:
+            if 'data.mode' in df.columns:
+                # Set the values in data.mode to blank ('')
+                df['data.mode'] = ''
+        else:
+            # Map mode to its corresponding string value
+            df['data.mode_str'] = df['data.mode'].apply(
+                lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
+            )
+
     return df
+
 
 def add_user_stats(user_data, batch_size=5):
     start_time = time.time()
