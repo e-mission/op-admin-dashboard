@@ -5,4 +5,5 @@ assets/qrcodes
 data/tokens.csv
 config.py
 docker-compose-dev.yml
+*.yml
 *.bak
