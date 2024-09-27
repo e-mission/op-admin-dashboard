@@ -30,9 +30,9 @@ layout = html.Div(
         ]),
         html.Div(id='tabs-content'),
         dcc.Store(id='selected-tab', data='tab-uuids-datatable'),  # Store to hold selected tab
-        dcc.Interval(id='interval-load-more', interval=10000, n_intervals=0), # default loading at 10s, can be lowered or hightened based on perf (usual process local is 3s)
+        dcc.Interval(id='interval-load-more', interval=20000, n_intervals=0), # default loading at 10s, can be lowered or hightened based on perf (usual process local is 3s)
         dcc.Store(id='store-uuids', data=[]),  # Store to hold the original UUIDs data
-        dcc.Store(id='store-loaded-uuids', data={'data': [], 'loaded': False})  # Store to track loaded data
+        dcc.Store(id='store-loaded-uuids', data={'data': [], 'loaded': False}),  # Store to track loaded data
         # RadioItems for key list switch, wrapped in a div that can hide/show
         html.Div(
             id='keylist-switch-container',
@@ -93,9 +93,7 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
     State('store-loaded-uuids', 'loaded')  # Keep track if we have finished loading all data
 )
 def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories,
-                   start_date, end_date, timezone, n_intervals, loaded_uuids_store, all_data_loaded):
-    
-)
+                   start_date, end_date, timezone, n_intervals, key_list, loaded_uuids_store, all_data_loaded):
     # Default visibility for keylist switch is hidden
     keylist_switch_visibility = {'display': 'none'}
     initial_batch_size = 10  # Define the batch size for loading UUIDs
@@ -149,9 +147,14 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
         if df.empty or not perm_utils.has_permission('data_uuids'):
             logging.debug("No data or permission issues.")
-            return html.Div([html.P("No data available or you don't have permission.")]), loaded_uuids_store, False
+            return html.Div([html.P("No data available or you don't have permission.")]), loaded_uuids_store, False, keylist_switch_visibility
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
+
+        logging.debug("Returning appended data to update the UI.")
+        content = html.Div([populate_datatable(df)])
+        return content, loaded_uuids_store, False if not loaded_uuids_store['loaded'] else True, keylist_switch_visibility
+
 
 
     # Handle other tabs normally
