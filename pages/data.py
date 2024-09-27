@@ -74,10 +74,19 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
 
 
 @callback(
+    Output('keylist-switch-container', 'style'),
+    Input('tabs-datatable', 'value'),
+)
+def show_keylist_switch(tab):
+    if tab == 'tab-trajectories-datatable':
+        return {'display': 'block'} 
+    return {'display': 'none'}  # Hide the keylist-switch on all other tabs
+
+
+@callback(
     Output('tabs-content', 'children'),
     Output('store-loaded-uuids', 'data'),
     Output('interval-load-more', 'disabled'),  # Disable interval when all data is loaded
-    Output('keylist-switch-container', 'style'),  # Control visibility of the keylist-switch
     Input('tabs-datatable', 'value'),
     Input('store-uuids', 'data'),
     Input('store-excluded-uuids', 'data'),
@@ -94,8 +103,6 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
 )
 def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories,
                    start_date, end_date, timezone, n_intervals, key_list, loaded_uuids_store, all_data_loaded):
-    # Default visibility for keylist switch is hidden
-    keylist_switch_visibility = {'display': 'none'}
     initial_batch_size = 10  # Define the batch size for loading UUIDs
 
     # Update selected tab
@@ -147,15 +154,20 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
         if df.empty or not perm_utils.has_permission('data_uuids'):
             logging.debug("No data or permission issues.")
-            return html.Div([html.P("No data available or you don't have permission.")]), loaded_uuids_store, False, keylist_switch_visibility
+            return html.Div([html.P("No data available or you don't have permission.")]), loaded_uuids_store, True
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
         logging.debug("Returning appended data to update the UI.")
-        content = html.Div([populate_datatable(df)])
-        return content, loaded_uuids_store, False if not loaded_uuids_store['loaded'] else True, keylist_switch_visibility
-
-
+        content = html.Div([
+            populate_datatable(df),
+            html.P(
+                f"Showing {len(loaded_data)} of {len(uuids_list)} UUIDs." +
+                (f" Loading 10 more..." if not loaded_uuids_store.get('loaded', False) else ""),
+                style={'margin': '15px 5px'}
+            )
+        ])
+        return content, loaded_uuids_store, False if not loaded_uuids_store['loaded'] else True
 
     # Handle other tabs normally
     elif tab == 'tab-trips-datatable':
@@ -177,7 +189,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
         return html.Div([
             html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
             trips_table
-        ]), loaded_uuids_store, True, keylist_switch_visibility
+        ]), loaded_uuids_store, True
 
     elif tab == 'tab-demographics-datatable':
         data = store_demographics["data"]
@@ -188,18 +200,15 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
             columns = list(data[0].keys())
         elif len(data) > 1:
             if not has_perm:
-                return None, loaded_uuids_store
+                return None, loaded_uuids_store, True
             return html.Div([
                 dcc.Tabs(id='subtabs-demographics', value=list(data.keys())[0], children=[
                     dcc.Tab(label=key, value=key) for key in data
                 ]),
                 html.Div(id='subtabs-demographics-content')
-            ]), loaded_uuids_store, True, keylist_switch_visibility
+            ]), loaded_uuids_store, True
 
     elif tab == 'tab-trajectories-datatable':
-        # Make keylist-switch visible when the 'Trajectories' tab is selected
-        keylist_switch_visibility = {'display': 'block'}
-
         (start_date, end_date) = iso_to_date_only(start_date, end_date)
 
         # Fetch new data based on the selected key_list from the keylist-switch
@@ -215,16 +224,16 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
             # If no permission or data, disable interval and return empty content
-            return None, loaded_uuids_store, True, keylist_switch_visibility
+            return None, loaded_uuids_store, True
 
         # Filter the columns based on permissions
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
         # Return the populated DataTable
-        return populate_datatable(df), loaded_uuids_store, True, keylist_switch_visibility
+        return populate_datatable(df), loaded_uuids_store, True
 
     # Default case: if no data is loaded or the tab is not handled
-    return None, loaded_uuids_store, True, keylist_switch_visibility
+    return None, loaded_uuids_store, True
 
 
 

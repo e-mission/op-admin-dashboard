@@ -210,74 +210,29 @@ def make_controls():
              'flex-direction': 'column'}
   )
 
-# Dcc Loading removed for Data Page Lazy Loading.
-# TODO Figure out how to enable Loading on everything BUT Data Page UUIDs Tab
-page_content = dbc.Container(
-    [
-        dcc.Loading(
-            id="global-loading",
-            type="circle",
-            children=dash.page_container,  # Dynamically load the pages
-            style={
-                "position": "absolute", 
-                "top": "0", 
-                "left": "0", 
-                "right": "0", 
-                "bottom": "0", 
-                "display": "flex", 
-                "justifyContent": "center",
-                "alignItems": "center",  # Center vertically
-            },
-            overlay_style={
-                "visibility": "visible", 
-                "opacity": 0.5, 
-                "backgroundColor": "white"
-            },
-            custom_spinner = html.Div(
-                [
-                    html.Span(id='custom-spinner-text', children="Loading initial page"),
-                    dbc.Spinner(color="danger", spinner_style={"margin-left": "10px"})  # Add space between text and spinner
-                ],
-                style={
-                    "display": "flex",  # Align text and spinner horizontally
-                    "alignItems": "center",  # Center vertically
-                    "padding": "20px",  # Padding inside the box
-                    "border": "1px solid lightgray",  # Grayish border
-                    "border-radius": "5px",  # Rounded corners
-                    "backgroundColor": "#f8f9fa",  # Light gray background color
-                    "textAlign": "center",  # Center the content
-                }
-            )
-        ),
-    ],
-    fluid=True,  # Ensure it spans the width of the screen
-    style={
-        "width": "90vw",  # Full viewport width
-        "height": "100vh",  # Full viewport height
-        "position": "relative",  # Relative to the parent container for proper positioning
-        "padding": "0",  # Remove default padding
-        "margin": "0 auto"  # Remove any margin
-    }
+
+page_content = dcc.Loading(
+    id='global-loading',
+    type='default',
+    fullscreen=True,
+    overlay_style={"visibility": "visible", "filter": "blur(2px)"},
+    style={"background-color": "transparent"},
+    children=html.Div(dash.page_container, style={
+        "margin-left": "5rem",
+        "margin-right": "2rem",
+        "padding": "2rem 1rem",
+    })
 )
 
 
-
-# Callback in to update the custom spinner text
 @app.callback(
-    Output('custom-spinner-text', 'children'),
-    Input('tabs-datatable', 'value'),  # Track tab switches directly
-    Input('store-loaded-uuids', 'data')       # Get the UUIDs data
+    Output('global-loading', 'display'),
+    Input('interval-load-more', 'disabled'),
 )
-def update_custom_spinner_text(tab, uuids):
-    logging.debug(f'Updating spinner text based on the new tab: {tab}')
-    
-    # Custom spinner text logic based on the upcoming selected tab
-    if tab == 'tab-uuids-datatable':
-        uuid_count = len(uuids["data"])  # Count the number of UUIDs
-        logging.debug(f'UUIDs count: {uuid_count}')
-        return f'(Loaded {uuid_count} UUIDs so far... Please wait)'
-    else:
-        return 'Loading Data...'
+def hide_spinner_while_loading_batch(interval_disabled):
+    if interval_disabled:
+        return 'auto'
+    return 'hide'
 
 
 def make_home_page(): return [
