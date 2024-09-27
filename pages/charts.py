@@ -71,7 +71,7 @@ def generate_charts(store_user_stats, store_trips, selected_option):
     df = df[allowed_columns]
 
     # Generate the PygWalker visualization
-    walker = pyg.walk(df, return_html=True, hide_Data_Source_Config=False)
+    walker = pyg.walk(df, return_html=True, hide_Data_Source_Config=True)
     print(walker)  # Check what HTML is being returned
 
     return walker
