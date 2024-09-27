@@ -20,7 +20,7 @@ register_page(__name__, path="/data")
 intro = """## Data"""
 
 layout = html.Div(
-    [   
+    [
         dcc.Markdown(intro),
         dcc.Tabs(id="tabs-datatable", value='tab-uuids-datatable', children=[
             dcc.Tab(label='UUIDs', value='tab-uuids-datatable'),
@@ -29,9 +29,29 @@ layout = html.Div(
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
         html.Div(id='tabs-content'),
-        dcc.Interval(id='interval-load-more', interval=10000, n_intervals=0), # default loading at 10s, can be lowered or hightened based on perf (usual process local is 3s)
-        dcc.Store(id='store-uuids', data=[]),  # Store to hold the original UUIDs data
-        dcc.Store(id='store-loaded-uuids', data={'data': [], 'loaded': False})  # Store to track loaded data
+
+        # RadioItems for key list switch, wrapped in a div that can hide/show
+        html.Div(
+            id='keylist-switch-container',
+            children=[
+                html.Label("Select Key List:"),
+                dcc.RadioItems(
+                    id='keylist-switch',
+                    options=[
+                        {'label': 'Analysis/Recreated Location', 'value': 'analysis/recreated_location'},
+                        {'label': 'Background/Location', 'value': 'background/location'}
+                    ],
+                    value='analysis/recreated_location',  # Default value
+                    labelStyle={'display': 'inline-block', 'margin-right': '10px'}
+                ),
+            ],
+            style={'display': 'none'}  # Initially hidden, will show only for the "Trajectories" tab
+        ),
+
+        dcc.Interval(id='interval-load-more', interval=10000, n_intervals=0),
+        dcc.Store(id='store-uuids', data=[]),
+        dcc.Store(id='store-loaded-uuids', data={'data': [], 'loaded': False}),
+        dcc.Store(id='store-trajectories', data={})  # Store for trajectories data
     ]
 )
 
@@ -44,8 +64,9 @@ def clean_location_data(df):
         df['data.end_loc.coordinates'] = df['data.end_loc.coordinates'].apply(lambda x: f'({x[0]}, {x[1]})')
     return df
 
-def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids):
-    df = query_trajectories(start_date, end_date, tz)
+def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids, key_list):
+    df = query_trajectories(start_date=start_date, end_date=end_date, tz=tz, key_list=key_list)
+
     records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
     store = {
         "data": records,
@@ -58,6 +79,7 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
     Output('tabs-content', 'children'),
     Output('store-loaded-uuids', 'data'),
     Output('interval-load-more', 'disabled'),  # Disable interval when all data is loaded
+    Output('keylist-switch-container', 'style'),  # Control visibility of the keylist-switch
     Input('tabs-datatable', 'value'),
     Input('store-uuids', 'data'),
     Input('store-excluded-uuids', 'data'),
@@ -67,11 +89,15 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
     Input('date-picker', 'start_date'),
     Input('date-picker', 'end_date'),
     Input('date-picker-timezone', 'value'),
-    Input('interval-load-more', 'n_intervals'),# Interval to trigger the loading of more data
+    Input('interval-load-more', 'n_intervals'),  # Interval to trigger the loading of more data
+    Input('keylist-switch', 'value'),  # Add keylist-switch to trigger data refresh on change
     State('store-loaded-uuids', 'data'),  # Use State to track already loaded data
-    State('store-loaded-uuids', 'loaded'),  # Keep track if we have finished loading all data
+    State('store-loaded-uuids', 'loaded')  # Keep track if we have finished loading all data
 )
-def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date, timezone, n_intervals, loaded_uuids_store, all_data_loaded):
+def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date, timezone, n_intervals, key_list, loaded_uuids_store, all_data_loaded):
+    # Default visibility for keylist switch is hidden
+    keylist_switch_visibility = {'display': 'none'}
+
     initial_batch_size = 10  # Define the batch size for loading UUIDs
 
     # Ensure store_uuids contains the key 'data' which is a list of dictionaries
@@ -123,7 +149,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
         logging.debug("Returning appened data to update the UI.")
-        return html.Div([populate_datatable(df)]), loaded_uuids_store, False if not loaded_uuids_store['loaded'] else True
+        return html.Div([populate_datatable(df)]), loaded_uuids_store, False if not loaded_uuids_store['loaded'] else True, keylist_switch_visibility
 
 
     # Handle other tabs normally
@@ -146,7 +172,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
         return html.Div([
             html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
             trips_table
-        ]), loaded_uuids_store, True
+        ]), loaded_uuids_store, True, keylist_switch_visibility
 
     elif tab == 'tab-demographics-datatable':
         data = store_demographics["data"]
@@ -163,13 +189,19 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                     dcc.Tab(label=key, value=key) for key in data
                 ]),
                 html.Div(id='subtabs-demographics-content')
-            ]), loaded_uuids_store, True
+            ]), loaded_uuids_store, True, keylist_switch_visibility
 
     elif tab == 'tab-trajectories-datatable':
+        # Make keylist-switch visible when the 'Trajectories' tab is selected
+        keylist_switch_visibility = {'display': 'block'}
+
         (start_date, end_date) = iso_to_date_only(start_date, end_date)
-        if store_trajectories == {}:
-            store_trajectories = update_store_trajectories(start_date, end_date, timezone, store_excluded_uuids)
-        data = store_trajectories["data"]
+
+        # Fetch new data based on the selected key_list from the keylist-switch
+        if store_trajectories == {} or key_list:  # Ensure data is refreshed when key_list changes
+            store_trajectories = update_store_trajectories(start_date, end_date, timezone, store_excluded_uuids, key_list)
+
+        data = store_trajectories.get("data", [])
         if data:
             columns = list(data[0].keys())
             columns = perm_utils.get_trajectories_columns(columns)
@@ -177,13 +209,17 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
-            return None, loaded_uuids_store
+            # If no permission or data, disable interval and return empty content
+            return None, loaded_uuids_store, True, keylist_switch_visibility
 
+        # Filter the columns based on permissions
         df = df.drop(columns=[col for col in df.columns if col not in columns])
-        return populate_datatable(df), loaded_uuids_store, True
+
+        # Return the populated DataTable
+        return populate_datatable(df), loaded_uuids_store, True, keylist_switch_visibility
 
     # Default case: if no data is loaded or the tab is not handled
-    return None, loaded_uuids_store, True
+    return None, loaded_uuids_store, True, keylist_switch_visibility
 
 
 # handle subtabs for demographic table when there are multiple surveys
