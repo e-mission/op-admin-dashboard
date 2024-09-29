@@ -20,7 +20,7 @@ jobs:
     - name: Fetch server image tag
       id: get-server-tag
       run: |
-        response=$(curl -s https://raw.githubusercontent.com/MukuFlash03/e-mission-server/refs/heads/cleanup-cicd/.env)
+        response=$(curl -s https://raw.githubusercontent.com/e-mission/e-mission-server/refs/heads/cleanup-cicd/.env)
         SERVER_IMAGE_TAG=$(echo "$response" | grep "SERVER_IMAGE_TAG=" | cut -d'=' -f2)
         echo "SERVER_IMAGE_TAG=$SERVER_IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
