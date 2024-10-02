@@ -139,16 +139,18 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
             new_data = uuids_list[total_loaded:total_to_load]
 
             if new_data:
+                # Process and append the new data to the loaded store
                 processed_data = db_utils.add_user_stats(new_data, initial_batch_size)
                 loaded_data.extend(processed_data)
-
-                loaded_uuids_store['data'] = loaded_data
+                
+                # Update the store with the new data
+                loaded_uuids_store['data'] = loaded_data  # Mark all data as loaded if done
                 loaded_uuids_store['loaded'] = len(loaded_data) >= len(uuids_list)
 
                 logging.debug(f"Callback - {selected_tab} Stage 4: New batch loaded. Total loaded: {len(loaded_data)}.")
 
         # Prepare the data to be displayed
-        columns = perm_utils.get_uuids_columns()
+        columns = perm_utils.get_uuids_columns()  # Get the relevant columns
         df = pd.DataFrame(loaded_data)
 
         if df.empty or not perm_utils.has_permission('data_uuids'):
@@ -228,7 +230,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
         logging.debug(f"Callback - {selected_tab} Stage 2: Handling Trajectories tab.")
 
         (start_date, end_date) = iso_to_date_only(start_date, end_date)
-
+        # Fetch new data based on the selected key_list from the keylist-switch
         if store_trajectories == {} or key_list:
            store_trajectories = update_store_trajectories(start_date, end_date, timezone, store_excluded_uuids, key_list)
 

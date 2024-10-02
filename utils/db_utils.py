@@ -72,7 +72,11 @@ def query_uuids(start_date: str, end_date: str, tz: str):
     # }
 
     logging.debug("Utils - UUIDs Stage 1: Querying the UUID DB for (no date range)")
-
+    # This should actually use the profile DB instead of (or in addition to)
+    # the UUID DB so that we can see the app version, os, manufacturer...
+    # I will write a couple of functions to get all the users in a time range
+    # (although we should define what that time range should be) and to merge
+    # that with the profile data
     start_time = time.time()  # Start timing for the entire function
     entries_start_time = time.time()  # Start timing for fetching entries
     entries = edb.get_uuid_db().find()
@@ -99,6 +103,8 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
     (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
     ts_start_time = time.time()  # Start timing for time series object retrieval
     ts = esta.TimeSeries.get_aggregate_time_series()
+    # Note to self, allow end_ts to also be null in the timequery
+    # we can then remove the start_time, end_time logic
     logging.debug(f"Utils - Confirmed Trips Stage 2: Time taken for get_aggregate_time_series: {time.time() - ts_start_time:.4f} seconds")
 
     entries_start_time = time.time()  # Start timing for retrieving data
@@ -139,6 +145,9 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
             or "distance" not in md
             or not isinstance(md["distance"], dict)
             else (
+                # Get the maximum value from 'md["distance"]' using the values of 'md["distance"].get' as the key for 'max'.
+                # This operation only happens if the length of 'md["distance"]' is greater than 0.
+                # Otherwise, return "INVALID".
                 max(md["distance"], key=md["distance"].get)
                 if len(md["distance"]) > 0
                 else "INVALID"
