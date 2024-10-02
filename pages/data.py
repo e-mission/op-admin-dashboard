@@ -107,15 +107,18 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
     # Update selected tab
     selected_tab = tab
-    logging.debug(f"Selected tab: {selected_tab}")
+    logging.debug(f"Callback - {selected_tab} Stage 1: Selected tab updated.")
+    
     # Handle the UUIDs tab without fullscreen loading spinner
     if tab == 'tab-uuids-datatable':
+        start_time = time.time()
+        logging.debug(f"Callback - {selected_tab} Stage 2: Handling UUIDs tab.")
+
         # Ensure store_uuids contains the key 'data' which is a list of dictionaries
         if not isinstance(store_uuids, dict) or 'data' not in store_uuids:
             logging.error(f"Expected store_uuids to be a dict with a 'data' key, but got {type(store_uuids)}")
             return html.Div([html.P("Data structure error.")]), loaded_uuids_store, True
 
-        # Extract the list of UUIDs from the dict
         uuids_list = store_uuids['data']
 
         # Ensure uuids_list is a list for slicing
@@ -123,7 +126,6 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
             logging.error(f"Expected store_uuids['data'] to be a list but got {type(uuids_list)}")
             return html.Div([html.P("Data structure error.")]), loaded_uuids_store, True
 
-        # Retrieve already loaded data from the store
         loaded_data = loaded_uuids_store.get('data', [])
         total_loaded = len(loaded_data)
 
@@ -132,33 +134,30 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
             total_to_load = total_loaded + initial_batch_size
             total_to_load = min(total_to_load, len(uuids_list))  # Avoid loading more than available
 
-            logging.debug(f"Loading next batch of UUIDs: {total_loaded} to {total_to_load}")
+            logging.debug(f"Callback - {selected_tab} Stage 3: Loading next batch of UUIDs from {total_loaded} to {total_to_load}.")
 
-            # Slice the list of UUIDs from the dict
             new_data = uuids_list[total_loaded:total_to_load]
 
             if new_data:
-                # Process and append the new data to the loaded store
                 processed_data = db_utils.add_user_stats(new_data, initial_batch_size)
                 loaded_data.extend(processed_data)
 
-                # Update the store with the new data
                 loaded_uuids_store['data'] = loaded_data
-                loaded_uuids_store['loaded'] = len(loaded_data) >= len(uuids_list)  # Mark all data as loaded if done
+                loaded_uuids_store['loaded'] = len(loaded_data) >= len(uuids_list)
 
-                logging.debug(f"New batch loaded. Total loaded: {len(loaded_data)}")
+                logging.debug(f"Callback - {selected_tab} Stage 4: New batch loaded. Total loaded: {len(loaded_data)}.")
 
         # Prepare the data to be displayed
-        columns = perm_utils.get_uuids_columns()  # Get the relevant columns
+        columns = perm_utils.get_uuids_columns()
         df = pd.DataFrame(loaded_data)
 
         if df.empty or not perm_utils.has_permission('data_uuids'):
-            logging.debug("No data or permission issues.")
+            logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
             return html.Div([html.P("No data available or you don't have permission.")]), loaded_uuids_store, True
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
-        logging.debug("Returning appended data to update the UI.")
+        logging.debug(f"Callback - {selected_tab} Stage 5: Returning appended data to update the UI.")
         content = html.Div([
             populate_datatable(df),
             html.P(
@@ -167,10 +166,17 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                 style={'margin': '15px 5px'}
             )
         ])
+
+        elapsed_time = time.time() - start_time
+        logging.info(f"Callback - {selected_tab} Stage 6: Total Time for UUIDs Tab: {elapsed_time:.2f} seconds")
+
         return content, loaded_uuids_store, False if not loaded_uuids_store['loaded'] else True
 
     # Handle other tabs normally
     elif tab == 'tab-trips-datatable':
+        start_time = time.time()
+        logging.debug(f"Callback - {selected_tab} Stage 2: Handling Trips tab.")
+
         data = store_trips["data"]
         columns = perm_utils.get_allowed_trip_columns()
         columns.update(col['label'] for col in perm_utils.get_allowed_named_trip_columns())
@@ -179,19 +185,25 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
+            logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
             return None, loaded_uuids_store, True
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
         df = clean_location_data(df)
 
-        trips_table = populate_datatable(df, 'trips-table')
-        logging.debug(f"Returning 3 values: {trips_table}, {loaded_uuids_store}, True")
+        trips_table = populate_datatable(df)
+        elapsed_time = time.time() - start_time
+        logging.info(f"Callback - {selected_tab} Stage 3: Total Time for Trips Tab: {elapsed_time:.2f} seconds")
+
         return html.Div([
             html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
             trips_table
         ]), loaded_uuids_store, True
 
     elif tab == 'tab-demographics-datatable':
+        start_time = time.time()
+        logging.debug(f"Callback - {selected_tab} Stage 2: Handling Demographics tab.")
+
         data = store_demographics["data"]
         has_perm = perm_utils.has_permission('data_demographics')
 
@@ -208,12 +220,17 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                 html.Div(id='subtabs-demographics-content')
             ]), loaded_uuids_store, True
 
+        elapsed_time = time.time() - start_time
+        logging.info(f"Callback - {selected_tab} Stage 3: Total Time for Demographics Tab: {elapsed_time:.2f} seconds")
+
     elif tab == 'tab-trajectories-datatable':
+        start_time = time.time()
+        logging.debug(f"Callback - {selected_tab} Stage 2: Handling Trajectories tab.")
+
         (start_date, end_date) = iso_to_date_only(start_date, end_date)
 
-        # Fetch new data based on the selected key_list from the keylist-switch
-        if store_trajectories == {} or key_list:  # Ensure data is refreshed when key_list changes
-            store_trajectories = update_store_trajectories(start_date, end_date, timezone, store_excluded_uuids, key_list)
+        if store_trajectories == {} or key_list:
+           store_trajectories = update_store_trajectories(start_date, end_date, timezone, store_excluded_uuids, key_list)
 
         data = store_trajectories.get("data", [])
         if data:
@@ -223,18 +240,19 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
-            # If no permission or data, disable interval and return empty content
+            logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
             return None, loaded_uuids_store, True
 
-        # Filter the columns based on permissions
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
-        # Return the populated DataTable
+        elapsed_time = time.time() - start_time
+        logging.info(f"Callback - {selected_tab} TStage 3: otal Time for Trajectories Tab: {elapsed_time:.2f} seconds")
+
         return populate_datatable(df), loaded_uuids_store, True
 
     # Default case: if no data is loaded or the tab is not handled
+    logging.debug(f"Callback - {selected_tab} Error Stage: No data loaded or unhandled tab.")
     return None, loaded_uuids_store, True
-
 
 
 # handle subtabs for demographic table when there are multiple surveys
