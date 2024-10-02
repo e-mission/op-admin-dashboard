@@ -53,6 +53,10 @@ echo "Database Name: $DB_NAME"
 DB_HOST="mongodb://db/$DB_NAME"
 sed -i.bak "s|DB_HOST:.*|DB_HOST: $DB_HOST|" "$CONFIG_FILE"
 
+# Update the docker-compose configuration file with the actual STUDY_CONFIG
+STUDY_CONFIG=$(echo "$DB_NAME" | sed -E 's/openpath_prod_(.*)$/\1/' | tr '_' '-')
+sed -i.bak "s|STUDY_CONFIG:.*|STUDY_CONFIG: \"$STUDY_CONFIG\"|" "$CONFIG_FILE"
+
 echo "Updated docker-compose file:"
 cat "$CONFIG_FILE"
 
