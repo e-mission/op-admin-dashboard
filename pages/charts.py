@@ -8,10 +8,14 @@ from utils import permissions as perm_utils
 
 register_page(__name__, path="/charts")
 
-# Define the page layout with a container and spinner
+
+# Define the layout
 layout = html.Div([
     html.H1('PygWalker Interactive Charts', style={'textAlign': 'center'}),
-    html.Div(intro := """Select a dataset and visualize the data using PygWalker.""", style={'textAlign': 'center', 'paddingBottom': '20px'}),
+    html.Div(
+        "Select a dataset and visualize the data using PygWalker.",
+        style={'textAlign': 'center', 'paddingBottom': '20px'}
+    ),
     dcc.Dropdown(
         id='data-options',
         options=[
@@ -24,10 +28,13 @@ layout = html.Div([
     dcc.Loading(
         id='loading-chart',
         type='circle',
-        children=html.Iframe(id='charts', srcDoc='', style={'width': '100%', 'height': '80vh', 'border': 'none'})
+        children=html.Iframe(
+            id='charts',
+            srcDoc='',
+            style={'width': '100%', 'height': '80vh', 'border': 'none'}
+        )
     )
 ], style={'padding': '20px'})
-
 
 # Helper function to get data and permissions
 def get_data_and_permissions(selected_option, store_user_stats, store_trips):
@@ -50,7 +57,6 @@ def get_data_and_permissions(selected_option, store_user_stats, store_trips):
 
     return data, columns, has_perm
 
-
 # Callback function to generate charts
 @callback(
     Output('charts', 'srcDoc'),
@@ -69,9 +75,22 @@ def generate_charts(store_user_stats, store_trips, selected_option):
     df = pd.DataFrame(data)
     allowed_columns = [col for col in df.columns if col in columns]
     df = df[allowed_columns]
-
+    
     # Generate the PygWalker visualization
-    walker = pyg.walk(df, return_html=True, hide_Data_Source_Config=True)
-    print(walker)  # Check what HTML is being returned
-
-    return walker
+    walker = pyg.walk(
+        df, 
+        return_html=True, 
+        hide_Data_Source_Config=True, 
+        appearance='light'
+    )
+    
+    # Ensure that walker is a string containing HTML
+    if isinstance(walker, str):
+        #print(walker)
+        return walker
+    elif hasattr(walker, 'to_html'):
+        print(walker.to_html())
+        return walker.to_html()
+    else:
+        # If walker is not a string or doesn't have to_html, return no_update
+        return no_update
