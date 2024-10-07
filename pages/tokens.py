@@ -3,22 +3,25 @@ import zipfile
 
 import pandas as pd
 
+import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html, Input, Output, callback, State, register_page, dash_table
 
 from emission.storage.decorations.token_queries import insert_many_tokens
 import emission.core.get_database as edb
+import base64
+import io
 
 from utils.generate_qr_codes import saveAsQRCode
 from utils.generate_random_tokens import generateRandomTokensForProgram
 from utils.permissions import get_token_prefix, has_permission
 
+token_deletion_enabled = os.getenv('TOKEN_DELETION_ENABLED', 'False').lower() == 'true'
 
 if has_permission('token_generate'):
     register_page(__name__, path="/tokens")
 
 intro = """## Tokens"""
-QRCODE_PATH = 'assets/qrcodes'
 
 layout = html.Div(
     [
@@ -84,10 +87,21 @@ layout = html.Div(
                 sm=6,
             ),
         ]),
-
         html.Div(id='token-table'),
-
+        #Initializes a Dash callback store named 'selected-rows' with initial data as an empty list
+        #The store is updated by Dash callbacks based on user interaction (when user makes row selection)
+        dcc.Store(id='selected-rows', data=[]),
         html.Br(),
+        #Create a confirmation dialog provider with a button(Delete Selected tokens) triggering a confirmation message.
+        #Allow users to delete tokens with users confirmation.
+        dcc.ConfirmDialogProvider(
+            children=html.Button('Delete Selected Tokens', id = 'delete-button', disabled = not (os.getenv('TOKEN_DELETION_ENABLED', 'False').lower() == 'true'), style = {'float': 'left',  
+            'font-size': '14px', 'width': '160px', 'display': 'block', 'margin-bottom': '10px',
+            'margin-right': '5px', 'height':'40px', 'verticalAlign': 'top', 'background-color': 'green',
+            'color': 'white',}),
+            id='confirm-delete',
+            message='Are you sure you want to delete selected token(s)?',
+        ),
         html.Button(children='Export QR codes', id='token-export', n_clicks=0, style={
             'font-size': '14px', 'width': '140px', 'display': 'block', 'margin-bottom': '10px',
             'margin-right': '5px', 'height':'40px', 'verticalAlign': 'top', 'background-color': 'green',
@@ -95,6 +109,42 @@ layout = html.Div(
         }),
     ]
 )
+
+#Update the 'selected-rows' store based on changes in selected rows in 'tokens-table'
+@callback(
+    Output('selected-rows', 'data'),
+    Input('tokens-table', 'selected_rows'),
+    prevent_initial_call=True
+)
+def update_selected_rows(selected_rows):
+    #Update the 'selected-rows' store with the current selected rows
+    return selected_rows
+
+
+@callback(
+    [Output('tokens-table', 'data'),
+    Output('tokens-table', 'selected_rows')],
+    Input('confirm-delete','submit_n_clicks'),
+    State('tokens-table', 'data'),
+    State('selected-rows', 'data'),
+    prevent_initial_call=True
+)
+#Delete selected rows based on confirmation
+def delete_selected_rows(submit_clicks, current_data, selected_rows):
+    #Check if the delete confirmation button is clicked
+    if submit_clicks and token_deletion_enabled:
+        #Remove selected rows from the current data
+        current_data = [row for i, row in enumerate(current_data) if i not in selected_rows]
+        df = query_tokens()
+        delete_list = df.iloc[selected_rows].to_dict('records')
+        #Delete tokens on rows to be deleted and remove associated QR codes
+        for token_dict in delete_list:
+            edb.get_token_db().delete_one(token_dict)
+        #Clear the list of selected rows
+        selected_rows = []
+    #Return updated data and selected rows for tokens-table
+    return current_data, selected_rows
+
 
 @callback(
     Output('token-generate', 'n_clicks'),
@@ -111,8 +161,6 @@ def generate_tokens(n_clicks, program, token_length, token_count, out_format, ch
         token_prefix = get_token_prefix() + program + ('_test' if 'test-token' in checklist else '')
         tokens = generateRandomTokensForProgram(token_prefix, token_length, token_count, out_format)
         insert_many_tokens(tokens)
-        for token in tokens:
-            saveAsQRCode(QRCODE_PATH, token)
     tokens_table = populate_datatable()
     return 0, tokens_table
 
@@ -122,16 +170,16 @@ def generate_tokens(n_clicks, program, token_length, token_count, out_format, ch
     Input('token-export', 'n_clicks'),
 )
 def export_tokens(n_clicks):
-    def zip_directory(bytes_io):
+    def zip_directory():
+        bytes_io = io.BytesIO()
         with zipfile.ZipFile(bytes_io, mode="w") as zf:
-            len_dir_path = len(QRCODE_PATH)
-            for root, _, files in os.walk(QRCODE_PATH):
-                for img in files:
-                    file_path = os.path.join(root, img)
-                    zf.write(file_path, file_path[len_dir_path:])
-
+            for token in edb.get_token_db().find({}, {"token": 1}):
+                img_bytes = saveAsQRCode(token['token'])
+                zf.writestr(f"{token['token']}.png", img_bytes.getvalue())
+        bytes_io.seek(0)
+        return bytes_io.read()
     if n_clicks > 0:
-        return dcc.send_bytes(zip_directory, "tokens.zip")
+        return dcc.send_bytes(zip_directory(), "tokens.zip")
 
 
 def populate_datatable():
@@ -139,7 +187,7 @@ def populate_datatable():
     if df.empty:
         return None
     df['id'] = df.index + 1
-    df['qr_code'] = "<img src='" + QRCODE_PATH + "/" + df['token'] + ".png' height='100px' />"
+    df['qr_code'] = df['token'].apply(lambda x: f"<img src='data:image/png;base64,{base64.b64encode(saveAsQRCode(x).read()).decode()}' height='100px' />")
     df = df.reindex(columns=['id', 'token', 'qr_code'])
     return dash_table.DataTable(
         id='tokens-table',
@@ -161,9 +209,13 @@ def populate_datatable():
         markdown_options={"html": True},
         style_table={'overflowX': 'auto'},
         export_format='csv',
+        row_selectable='multi', #Allow multiple row selection
+        selected_rows=[], #Initialize selected_rows as an empty list
     )
 
 def query_tokens():
     query_result = edb.get_token_db().find({}, {"_id": 0})
     df = pd.json_normalize(list(query_result))
     return df
+
+
