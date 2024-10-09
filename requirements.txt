@@ -1,8 +1,8 @@
 --extra-index-url https://plotly.nrel.gov/Docs/packages
 # dash is required to call `build:py`
-dash==2.15.0
+dash==2.18.0
 gunicorn==20.1.0
-plotly==5.14.1
+plotly==5.24.1
 dash-bootstrap-components==1.4.1
 dash_extensions==0.1.13
 #dashboard_setup/nrel_dash_components-0.0.1.tar.gz # for docker-compose

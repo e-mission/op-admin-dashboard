@@ -1,10 +1,10 @@
 import logging
 import arrow
 from uuid import UUID
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import pymongo
-
+import time
 import emission.core.get_database as edb
 import emission.storage.timeseries.abstract_timeseries as esta
 import emission.storage.timeseries.aggregate_timeseries as estag
@@ -16,16 +16,31 @@ import emission.storage.decorations.section_queries as esds
 from utils import constants
 from utils import permissions as perm_utils
 from utils.datetime_utils import iso_range_to_ts_range
+from functools import lru_cache
 
-def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude: list[str] = []):
-    """
-    Returns a dictionary of df records, given a dataframe, a column to filter on,
-    and a list of values that rows in that column will be excluded if they match
-    """
-    if df.empty: return []
-    if col_to_filter and vals_to_exclude: # will only filter if both are not None or []
+def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude=None):
+    start_time = time.time()
+    # Check if df is a valid DataFrame and if it is empty
+    if not isinstance(df, pd.DataFrame) or len(df) == 0:
+        return []
+    
+    # Default to an empty list if vals_to_exclude is None
+    if vals_to_exclude is None:
+        vals_to_exclude = []
+    
+    # Perform filtering if col_to_filter and vals_to_exclude are provided
+    if col_to_filter and vals_to_exclude:
+        # Ensure vals_to_exclude is a list of strings
+        if not isinstance(vals_to_exclude, list) or not all(isinstance(val, str) for val in vals_to_exclude):
+            raise ValueError("vals_to_exclude must be a list of strings.")
         df = df[~df[col_to_filter].isin(vals_to_exclude)]
+    
+    # Return the filtered DataFrame as a list of dictionaries
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken to df_to_filtered: {execution_time:.4f} seconds')
     return df.to_dict("records")
+
 
 def query_uuids(start_date: str, end_date: str, tz: str):
     # As of now, time filtering does not apply to UUIDs; we just query all of them.
@@ -55,6 +70,7 @@ def query_uuids(start_date: str, end_date: str, tz: str):
     # I will write a couple of functions to get all the users in a time range
     # (although we should define what that time range should be) and to merge
     # that with the profile data
+    start_time = time.time()
     entries = edb.get_uuid_db().find()
     df = pd.json_normalize(list(entries))
     if not df.empty:
@@ -62,9 +78,13 @@ def query_uuids(start_date: str, end_date: str, tz: str):
         df['user_id'] = df['uuid'].apply(str)
         df['user_token'] = df['user_email']
         df.drop(columns=["uuid", "_id"], inplace=True)
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken for Query_UUIDs: {execution_time:.4f} seconds')
     return df
 
 def query_confirmed_trips(start_date: str, end_date: str, tz: str):
+    start_time = time.time()
     (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
     ts = esta.TimeSeries.get_aggregate_time_series()
     # Note to self, allow end_ts to also be null in the timequery
@@ -169,9 +189,13 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
     # logging.debug("After filtering, df columns are %s" % df.columns)
     # logging.debug("After filtering, the actual data is %s" % df.head())
     # logging.debug("After filtering, the actual data is %s" % df.head().trip_start_time_str)
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken for Query_Confirmed_Trips: {execution_time:.4f} seconds')
     return (df, user_input_cols)
 
 def query_demographics():
+    start_time = time.time()
     # Returns dictionary of df where key represent differnt survey id and values are df for each survey
     logging.debug("Querying the demographics for (no date range)")
     ts = esta.TimeSeries.get_aggregate_time_series()
@@ -204,85 +228,133 @@ def query_demographics():
             for col in constants.EXCLUDED_DEMOGRAPHICS_COLS:
                 if col in df.columns:
                     df.drop(columns= [col], inplace=True) 
-                    
+    
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken for Query Demographic: {execution_time:.4f} seconds')
     return dataframes
 
-def query_trajectories(start_date: str, end_date: str, tz: str):
-    
+def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
     (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
     ts = esta.TimeSeries.get_aggregate_time_series()
+
+    # Check if key_list contains 'background/location'
+    key_list = [key_list]
     entries = ts.find_entries(
-        key_list=["analysis/recreated_location"],
+        key_list=key_list,
         time_query=estt.TimeQuery("data.ts", start_ts, end_ts),
     )
     df = pd.json_normalize(list(entries))
+
     if not df.empty:
         for col in df.columns:
             if df[col].dtype == 'object':
                 df[col] = df[col].apply(str)
+
+        # Drop metadata columns
         columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
-        df.drop(columns= columns_to_drop, inplace=True) 
+        df.drop(columns=columns_to_drop, inplace=True)
+
+        # Drop or modify excluded columns
         for col in constants.EXCLUDED_TRAJECTORIES_COLS:
             if col in df.columns:
-                df.drop(columns= [col], inplace=True) 
-        df['data.mode_str'] = df['data.mode'].apply(lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN')
+                df.drop(columns=[col], inplace=True)
+
+        # Check if 'background/location' is in the key_list
+        if 'background/location' in key_list:
+            if 'data.mode' in df.columns:
+                # Set the values in data.mode to blank ('')
+                df['data.mode'] = ''
+        else:
+            # Map mode to its corresponding string value
+            df['data.mode_str'] = df['data.mode'].apply(
+                lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
+            )
+
     return df
 
 
-def add_user_stats(user_data):
-    for user in user_data:
-        user_uuid = UUID(user['user_id'])
+def add_user_stats(user_data, batch_size=5):
+    start_time = time.time()
+    time_format = 'YYYY-MM-DD HH:mm:ss'
 
-        total_trips = esta.TimeSeries.get_aggregate_time_series().find_entries_count(
+    def process_user(user):
+        user_uuid = UUID(user['user_id'])
+        
+        # Fetch aggregated data for all users once and cache it
+        ts_aggregate = esta.TimeSeries.get_aggregate_time_series()
+
+        # Fetch data for the user, cached for repeated queries
+        profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
+        
+        total_trips = ts_aggregate.find_entries_count(
             key_list=["analysis/confirmed_trip"],
             extra_query_list=[{'user_id': user_uuid}]
         )
-        user['total_trips'] = total_trips
-
-        labeled_trips = esta.TimeSeries.get_aggregate_time_series().find_entries_count(
+        labeled_trips = ts_aggregate.find_entries_count(
             key_list=["analysis/confirmed_trip"],
             extra_query_list=[{'user_id': user_uuid}, {'data.user_input': {'$ne': {}}}]
         )
+        
+        user['total_trips'] = total_trips
         user['labeled_trips'] = labeled_trips
 
-        profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
-        user['platform'] = profile_data.get('curr_platform')
-        user['manufacturer'] = profile_data.get('manufacturer')
-        user['app_version'] = profile_data.get('client_app_version')
-        user['os_version'] = profile_data.get('client_os_version')
-        user['phone_lang'] = profile_data.get('phone_lang')
-
-
-
+        if profile_data:
+            user['platform'] = profile_data.get('curr_platform')
+            user['manufacturer'] = profile_data.get('manufacturer')
+            user['app_version'] = profile_data.get('client_app_version')
+            user['os_version'] = profile_data.get('client_os_version')
+            user['phone_lang'] = profile_data.get('phone_lang')
 
         if total_trips > 0:
-            time_format = 'YYYY-MM-DD HH:mm:ss'
             ts = esta.TimeSeries.get_time_series(user_uuid)
-            start_ts = ts.get_first_value_for_field(
+            first_trip_ts = ts.get_first_value_for_field(
                 key='analysis/confirmed_trip',
                 field='data.end_ts',
                 sort_order=pymongo.ASCENDING
             )
-            if start_ts != -1:
-                user['first_trip'] = arrow.get(start_ts).format(time_format)
+            if first_trip_ts != -1:
+                user['first_trip'] = arrow.get(first_trip_ts).format(time_format)
 
-            end_ts = ts.get_first_value_for_field(
+            last_trip_ts = ts.get_first_value_for_field(
                 key='analysis/confirmed_trip',
                 field='data.end_ts',
                 sort_order=pymongo.DESCENDING
             )
-            if end_ts != -1:
-                user['last_trip'] = arrow.get(end_ts).format(time_format)
+            if last_trip_ts != -1:
+                user['last_trip'] = arrow.get(last_trip_ts).format(time_format)
 
-            last_call = ts.get_first_value_for_field(
+            last_call_ts = ts.get_first_value_for_field(
                 key='stats/server_api_time',
                 field='data.ts',
                 sort_order=pymongo.DESCENDING
             )
-            if last_call != -1:
-                user['last_call'] = arrow.get(last_call).format(time_format)
+            if last_call_ts != -1:
+                user['last_call'] = arrow.get(last_call_ts).format(time_format)
+        
+        return user
 
-    return user_data
+    def batch_process(users_batch):
+        with ThreadPoolExecutor() as executor:  # Adjust max_workers based on CPU cores
+            futures = [executor.submit(process_user, user) for user in users_batch]
+            processed_batch = [future.result() for future in as_completed(futures)]
+        return processed_batch
+
+    total_users = len(user_data)
+    processed_data = []
+
+    for i in range(0, total_users, batch_size):
+        batch = user_data[i:i + batch_size]
+        processed_batch = batch_process(batch)
+        processed_data.extend(processed_batch)
+
+        logging.debug(f'Processed {len(processed_data)} users out of {total_users}')
+
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken to add_user_stats: {execution_time:.4f} seconds')
+
+    return processed_data
 
 def query_segments_crossing_endpoints(poly_region_start, poly_region_end, start_date: str, end_date: str, tz: str, excluded_uuids: list[str]):
     (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
