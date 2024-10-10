@@ -8,6 +8,7 @@ from dash import dcc, html, Input, Output, callback, register_page, dash_table, 
 import logging
 import pandas as pd
 from dash.exceptions import PreventUpdate
+import time
 
 from utils import constants
 from utils import permissions as perm_utils
@@ -23,17 +24,22 @@ intro = """## Data"""
 layout = html.Div(
     [
         dcc.Markdown(intro),
-        dcc.Tabs(id="tabs-datatable", value='tab-uuids-datatable', children=[
-            dcc.Tab(label='UUIDs', value='tab-uuids-datatable'),
-            dcc.Tab(label='Trips', value='tab-trips-datatable'),
-            dcc.Tab(label='Demographics', value='tab-demographics-datatable'),
-            dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
-        ]),
+        dcc.Tabs(
+            id="tabs-datatable",
+            value='tab-uuids-datatable',
+            children=[
+                dcc.Tab(label='UUIDs', value='tab-uuids-datatable'),
+                dcc.Tab(label='Trips', value='tab-trips-datatable'),
+                dcc.Tab(label='Demographics', value='tab-demographics-datatable'),
+                dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
+            ]
+        ),
         html.Div(id='tabs-content'),
         dcc.Store(id='selected-tab', data='tab-uuids-datatable'),  # Store to hold selected tab
-        dcc.Interval(id='interval-load-more', interval=20000, n_intervals=0), # default loading at 10s, can be lowered or hightened based on perf (usual process local is 3s)
+        dcc.Interval(id='interval-load-more', interval=24000, n_intervals=0),  # Interval for loading more data
         dcc.Store(id='store-uuids', data=[]),  # Store to hold the original UUIDs data
         dcc.Store(id='store-loaded-uuids', data={'data': [], 'loaded': False}),  # Store to track loaded data
+        dcc.Store(id='uuids-page-current', data=0),  # Store to track current page for UUIDs DataTable
         # RadioItems for key list switch, wrapped in a div that can hide/show
         html.Div(
             id='keylist-switch-container',
@@ -122,6 +128,27 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
 
 
 @callback(
+    Output('keylist-switch-container', 'style'),
+    Input('tabs-datatable', 'value'),
+)
+def show_keylist_switch(tab):
+    if tab == 'tab-trajectories-datatable':
+        return {'display': 'block'} 
+    return {'display': 'none'}  # Hide the keylist-switch on all other tabs
+
+
+@callback(
+    Output('uuids-page-current', 'data'),
+    Input('uuid-table', 'page_current'),
+    State('tabs-datatable', 'value')
+)
+def update_uuids_page_current(page_current, selected_tab):
+    if selected_tab == 'tab-uuids-datatable':
+        return page_current
+    raise PreventUpdate
+
+
+@callback(
     Output('tabs-content', 'children'),
     Output('store-loaded-uuids', 'data'),
     Output('interval-load-more', 'disabled'),  # Disable interval when all data is loaded
@@ -136,24 +163,31 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
     Input('date-picker-timezone', 'value'),
     Input('interval-load-more', 'n_intervals'),  # Interval to trigger the loading of more data
     Input('keylist-switch', 'value'),  # Add keylist-switch to trigger data refresh on change
+    Input('uuids-page-current', 'data'),  # Current page number for UUIDs DataTable
     State('store-loaded-uuids', 'data'),  # Use State to track already loaded data
     State('store-loaded-uuids', 'loaded')  # Keep track if we have finished loading all data
 )
-def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories,
-                   start_date, end_date, timezone, n_intervals, key_list, loaded_uuids_store, all_data_loaded):
+def render_content(
+    tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories,
+    start_date, end_date, timezone, n_intervals, key_list, current_page,
+    loaded_uuids_store, all_data_loaded
+):
     initial_batch_size = 10  # Define the batch size for loading UUIDs
 
     # Update selected tab
     selected_tab = tab
-    logging.debug(f"Selected tab: {selected_tab}")
+    logging.debug(f"Callback - {selected_tab} Stage 1: Selected tab updated.")
+    
     # Handle the UUIDs tab without fullscreen loading spinner
     if tab == 'tab-uuids-datatable':
+        start_time = time.time()
+        logging.debug(f"Callback - {selected_tab} Stage 2: Handling UUIDs tab.")
+
         # Ensure store_uuids contains the key 'data' which is a list of dictionaries
         if not isinstance(store_uuids, dict) or 'data' not in store_uuids:
             logging.error(f"Expected store_uuids to be a dict with a 'data' key, but got {type(store_uuids)}")
             return html.Div([html.P("Data structure error.")]), loaded_uuids_store, True
 
-        # Extract the list of UUIDs from the dict
         uuids_list = store_uuids['data']
 
         # Ensure uuids_list is a list for slicing
@@ -161,7 +195,6 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
             logging.error(f"Expected store_uuids['data'] to be a list but got {type(uuids_list)}")
             return html.Div([html.P("Data structure error.")]), loaded_uuids_store, True
 
-        # Retrieve already loaded data from the store
         loaded_data = loaded_uuids_store.get('data', [])
         total_loaded = len(loaded_data)
 
@@ -170,45 +203,51 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
             total_to_load = total_loaded + initial_batch_size
             total_to_load = min(total_to_load, len(uuids_list))  # Avoid loading more than available
 
-            logging.debug(f"Loading next batch of UUIDs: {total_loaded} to {total_to_load}")
+            logging.debug(f"Callback - {selected_tab} Stage 3: Loading next batch of UUIDs from {total_loaded} to {total_to_load}.")
 
-            # Slice the list of UUIDs from the dict
             new_data = uuids_list[total_loaded:total_to_load]
 
             if new_data:
                 # Process and append the new data to the loaded store
                 processed_data = db_utils.add_user_stats(new_data, initial_batch_size)
                 loaded_data.extend(processed_data)
-
+                
                 # Update the store with the new data
-                loaded_uuids_store['data'] = loaded_data
-                loaded_uuids_store['loaded'] = len(loaded_data) >= len(uuids_list)  # Mark all data as loaded if done
+                loaded_uuids_store['data'] = loaded_data  # Mark all data as loaded if done
+                loaded_uuids_store['loaded'] = len(loaded_data) >= len(uuids_list)
 
-                logging.debug(f"New batch loaded. Total loaded: {len(loaded_data)}")
+                logging.debug(f"Callback - {selected_tab} Stage 4: New batch loaded. Total loaded: {len(loaded_data)}.")
 
         # Prepare the data to be displayed
         columns = perm_utils.get_uuids_columns()  # Get the relevant columns
         df = pd.DataFrame(loaded_data)
 
         if df.empty or not perm_utils.has_permission('data_uuids'):
-            logging.debug("No data or permission issues.")
+            logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
             return html.Div([html.P("No data available or you don't have permission.")]), loaded_uuids_store, True
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
-        logging.debug("Returning appended data to update the UI.")
+        logging.debug(f"Callback - {selected_tab} Stage 5: Returning appended data to update the UI.")
         content = html.Div([
-            populate_datatable(df, table_id='uuid-table', page_current=current_page),
+            populate_datatable(df, table_id='uuid-table', page_current=current_page),  # Pass current_page
             html.P(
                 f"Showing {len(loaded_data)} of {len(uuids_list)} UUIDs." +
                 (f" Loading 10 more..." if not loaded_uuids_store.get('loaded', False) else ""),
                 style={'margin': '15px 5px'}
             )
         ])
+
+        elapsed_time = time.time() - start_time
+        logging.info(f"Callback - {selected_tab} Stage 6: Total Time for UUIDs Tab: {elapsed_time:.2f} seconds")
+
         return content, loaded_uuids_store, False if not loaded_uuids_store['loaded'] else True
 
     # Handle other tabs normally
     elif tab == 'tab-trips-datatable':
+        start_time = time.time()
+        logging.debug(f"Callback - {selected_tab} Stage 2: Handling Trips tab.")
+
         data = store_trips["data"]
         columns = perm_utils.get_allowed_trip_columns()
         columns.update(col['label'] for col in perm_utils.get_allowed_named_trip_columns())
@@ -217,19 +256,25 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
+            logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
             return None, loaded_uuids_store, True
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
         df = clean_location_data(df)
 
-        trips_table = populate_datatable(df, 'trips-table')
-        logging.debug(f"Returning 3 values: {trips_table}, {loaded_uuids_store}, True")
+        trips_table = populate_datatable(df)
+        elapsed_time = time.time() - start_time
+        logging.info(f"Callback - {selected_tab} Stage 3: Total Time for Trips Tab: {elapsed_time:.2f} seconds")
+
         return html.Div([
             html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
             trips_table
         ]), loaded_uuids_store, True
 
     elif tab == 'tab-demographics-datatable':
+        start_time = time.time()
+        logging.debug(f"Callback - {selected_tab} Stage 2: Handling Demographics tab.")
+
         data = store_demographics["data"]
         has_perm = perm_utils.has_permission('data_demographics')
 
@@ -246,11 +291,16 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                 html.Div(id='subtabs-demographics-content')
             ]), loaded_uuids_store, True
 
-    elif tab == 'tab-trajectories-datatable':
-        (start_date, end_date) = iso_to_date_only(start_date, end_date)
+        elapsed_time = time.time() - start_time
+        logging.info(f"Callback - {selected_tab} Stage 3: Total Time for Demographics Tab: {elapsed_time:.2f} seconds")
 
+    elif tab == 'tab-trajectories-datatable':
+        start_time = time.time()
+        logging.debug(f"Callback - {selected_tab} Stage 2: Handling Trajectories tab.")
+
+        (start_date, end_date) = iso_to_date_only(start_date, end_date)
         # Fetch new data based on the selected key_list from the keylist-switch
-        if store_trajectories == {} or key_list:  # Ensure data is refreshed when key_list changes
+        if store_trajectories == {} or key_list:
             store_trajectories = update_store_trajectories(start_date, end_date, timezone, store_excluded_uuids, key_list)
 
         data = store_trajectories.get("data", [])
@@ -261,16 +311,18 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
-            # If no permission or data, disable interval and return empty content
+            logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
             return None, loaded_uuids_store, True
 
-        # Filter the columns based on permissions
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
-        # Return the populated DataTable
+        elapsed_time = time.time() - start_time
+        logging.info(f"Callback - {selected_tab} Stage 3: Total Time for Trajectories Tab: {elapsed_time:.2f} seconds")
+
         return populate_datatable(df), loaded_uuids_store, True
 
     # Default case: if no data is loaded or the tab is not handled
+    logging.debug(f"Callback - {selected_tab} Error Stage: No data loaded or unhandled tab.")
     return None, loaded_uuids_store, True
 
 # Handle subtabs for demographic table when there are multiple surveys
@@ -369,50 +421,28 @@ def update_dropdowns_trips(n_clicks, button_label):
     return hidden_col, button_label
 
 
-
-def populate_datatable(df, table_id=''):
-    with ect.Timer() as total_timer:
-
-        # Stage 1: Check if df is a DataFrame and raise PreventUpdate if not
-        with ect.Timer() as stage1_timer:
-            if not isinstance(df, pd.DataFrame):
-                raise PreventUpdate
-        esdsq.store_dashboard_time(
-            "admin/data/populate_datatable/check_dataframe_type",
-            stage1_timer
-        )
-
-        # Stage 2: Create the DataTable from the DataFrame
-        with ect.Timer() as stage2_timer:
-            result = dash_table.DataTable(
-                id=table_id,
-                # columns=[{"name": i, "id": i} for i in df.columns],
-                data=df.to_dict('records'),
-                export_format="csv",
-                filter_options={"case": "sensitive"},
-                # filter_action="native",
-                sort_action="native",  # give user capability to sort columns
-                sort_mode="single",  # sort across 'multi' or 'single' columns
-                page_current=0,  # page number that user is on
-                page_size=50,  # number of rows visible per page
-                style_cell={
-                    'textAlign': 'left',
-                    # 'minWidth': '100px',
-                    # 'width': '100px',
-                    # 'maxWidth': '100px',
-                },
-                style_table={'overflowX': 'auto'},
-                css=[{"selector": ".show-hide", "rule": "display:none"}]
-            )
-        esdsq.store_dashboard_time(
-            "admin/data/populate_datatable/create_datatable",
-            stage2_timer
-        )
-
-    # Store the total time for the entire function
-    esdsq.store_dashboard_time(
-        "admin/data/populate_datatable/total_time",
-        total_timer
+def populate_datatable(df, table_id='', page_current=0):
+    if not isinstance(df, pd.DataFrame):
+        raise PreventUpdate
+    return dash_table.DataTable(
+        id=table_id,
+        # columns=[{"name": i, "id": i} for i in df.columns],
+        data=df.to_dict('records'),
+        export_format="csv",
+        filter_options={"case": "sensitive"},
+        # filter_action="native",
+        sort_action="native",  # give user capability to sort columns
+        sort_mode="single",  # sort across 'multi' or 'single' columns
+        page_current=page_current,  # set to current page
+        page_size=50,  # number of rows visible per page
+        style_cell={
+            'textAlign': 'left',
+            # 'minWidth': '100px',
+            # 'width': '100px',
+            # 'maxWidth': '100px',
+        },
+        style_table={'overflowX': 'auto'},
+        css=[{"selector":".show-hide", "rule":"display:none"}]
     )
 
     return result
