@@ -31,7 +31,7 @@ layout = html.Div(
         html.Div(id='tabs-content'),
         dcc.Store(id='selected-tab', data='tab-uuids-datatable'),  # Store to hold selected tab
         dcc.Interval(id='interval-load-more', interval=20000, n_intervals=0), # default loading at 10s, can be lowered or hightened based on perf (usual process local is 3s)
-        dcc.Store(id='store-uuids', data=[]),  # Store to hold the original UUIDs data
+        #dcc.Store(id='store-uuids', data=[]),  # Store to hold the original UUIDs data
         dcc.Store(id='store-loaded-uuids', data={'data': [], 'loaded': False}),  # Store to track loaded data
         # RadioItems for key list switch, wrapped in a div that can hide/show
         html.Div(

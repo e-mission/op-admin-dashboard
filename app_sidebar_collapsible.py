@@ -241,16 +241,45 @@ def make_home_page(): return [
 ]
 
 
-def make_layout(): return html.Div([
-    dcc.Location(id='url', refresh=False),
-    dcc.Store(id='store-trips', data={}),
-    dcc.Store(id='store-uuids', data={}),
-    dcc.Store(id='store-excluded-uuids', data={}), # list of UUIDs from excluded subgroups
-    dcc.Store(id='store-demographics', data={}),
-    dcc.Store(id='store-trajectories', data={}),
-    html.Div(id='page-content', children=make_home_page()),
-])
+def make_layout():
+    layout = html.Div([
+        html.Div(id='home-page-load', style={'display': 'none'}),
+        dcc.Location(id='url', refresh=False),
+        dcc.Store(id='store-trips', data={}),
+        dcc.Store(id='store-uuids', data={}),
+        dcc.Store(id='store-excluded-uuids', data={}),
+        dcc.Store(id='store-demographics', data={}),
+        dcc.Store(id='store-trajectories', data={}),
+        html.Div(id='page-content', children=make_home_page()),
+
+    ])
+    logging.debug("Main layout component IDs: %s", get_all_component_ids(layout))
+    return layout
+
 app.layout = make_layout
+
+def get_all_component_ids(component):
+    ids = []
+    if hasattr(component, 'id') and component.id:
+        ids.append(component.id)
+    if hasattr(component, 'children'):
+        children = component.children
+        if isinstance(children, list):
+            for child in children:
+                ids.extend(get_all_component_ids(child))
+        else:
+            ids.extend(get_all_component_ids(children))
+    return ids
+
+
+
+app.validation_layout = html.Div([
+    make_layout(),
+    *[page['layout'] for page in dash.page_registry.values()]
+])
+
+logging.debug("Validation layout component IDs: %s", get_all_component_ids(app.validation_layout))
+
 
 # make the 'filters' menu collapsible
 @app.callback(

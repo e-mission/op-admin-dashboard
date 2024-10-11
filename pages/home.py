@@ -5,7 +5,7 @@ The workaround is to check if the input value is None.
 
 """
 from uuid import UUID
-from dash import dcc, html, Input, Output, callback, register_page
+from dash import dcc, html, Input, Output, callback, register_page, no_update
 import dash_bootstrap_components as dbc
 
 import plotly.express as px
@@ -35,17 +35,17 @@ layout = html.Div(
     [
         dcc.Markdown(intro),
 
-        # Cards
+        # Cards with loading spinners
         dbc.Row([
-            dbc.Col(id='card-users'),
-            dbc.Col(id='card-active-users'),
-            dbc.Col(id='card-trips')
+            dbc.Col(dcc.Loading(children=[html.Div(id='card-users')], type='default')),
+            dbc.Col(dcc.Loading(children=[html.Div(id='card-active-users')], type='default')),
+            dbc.Col(dcc.Loading(children=[html.Div(id='card-trips')], type='default'))
         ]),
 
-        # Plots
+        # Plots with loading spinners
         dbc.Row([
-            dcc.Graph(id="fig-sign-up-trend"),
-            dcc.Graph(id="fig-trips-trend"),
+            dbc.Col(dcc.Loading(children=[dcc.Graph(id="fig-sign-up-trend")], type='default')),
+            dbc.Col(dcc.Loading(children=[dcc.Graph(id="fig-trips-trend")], type='default')),
         ])
     ]
 )
@@ -117,22 +117,32 @@ def generate_card(title_text, body_text, icon):
             ])
     return card
 
-
 @callback(
     Output('card-users', 'children'),
     Input('store-uuids', 'data'),
+    Input('url', 'pathname'),
+    Input('home-page-load', 'children')
 )
-def update_card_users(store_uuids):
-    number_of_users = store_uuids.get('length') if has_permission('overview_users') else 0
+def update_card_users(store_uuids, pathname, _):
+    if pathname != "/":
+        return no_update
+    if store_uuids is None or not has_permission('overview_users'):
+        number_of_users = 0
+    else:
+        number_of_users = store_uuids.get('length', 0)
     card = generate_card("# Users", f"{number_of_users} users", "fa fa-users")
     return card
-
 
 @callback(
     Output('card-active-users', 'children'),
     Input('store-uuids', 'data'),
+    Input('url', 'pathname'),  # Added Input
+    Input('home-page-load', 'children')
 )
-def update_card_active_users(store_uuids):
+def update_card_active_users(store_uuids, pathname, _):
+    if pathname != "/":
+        return no_update
+
     uuid_df = pd.DataFrame(store_uuids.get('data'))
     number_of_active_users = 0
     if not uuid_df.empty and has_permission('overview_active_users'):
@@ -141,49 +151,57 @@ def update_card_active_users(store_uuids):
     card = generate_card("# Active users", f"{number_of_active_users} users", "fa fa-person-walking")
     return card
 
-
 @callback(
     Output('card-trips', 'children'),
     Input('store-trips', 'data'),
+    Input('url', 'pathname')  # Added Input
 )
-def update_card_trips(store_trips):
+def update_card_trips(store_trips, pathname):
+    if pathname != "/":
+        return no_update
+
     number_of_trips = store_trips.get('length') if has_permission('overview_trips') else 0
     card = generate_card("# Confirmed trips", f"{number_of_trips} trips", "fa fa-angles-right")
     return card
 
-
 def generate_barplot(data, x, y, title):
     fig = px.bar()
-    if data is not None:
+    if data is not None and not data.empty:
         fig = px.bar(data, x=x, y=y)
     fig.update_layout(title=title)
     return fig
 
-
 @callback(
     Output('fig-sign-up-trend', 'figure'),
     Input('store-uuids', 'data'),
+    Input('url', 'pathname')  # Added Input
 )
-def generate_plot_sign_up_trend(store_uuids):
+def generate_plot_sign_up_trend(store_uuids, pathname):
+    if pathname != "/":
+        return no_update
+
     df = pd.DataFrame(store_uuids.get("data"))
     trend_df = None
     if not df.empty and has_permission('overview_signup_trends'):
         trend_df = compute_sign_up_trend(df)
-    fig = generate_barplot(trend_df, x = 'date', y = 'count', title = "Sign-ups trend")
+    fig = generate_barplot(trend_df, x='date', y='count', title="Sign-ups trend")
     return fig
-
 
 @callback(
     Output('fig-trips-trend', 'figure'),
     Input('store-trips', 'data'),
-    Input('date-picker', 'start_date'), # these are ISO strings
-    Input('date-picker', 'end_date'), # these are ISO strings
+    Input('date-picker', 'start_date'),  # these are ISO strings
+    Input('date-picker', 'end_date'),    # these are ISO strings
+    Input('url', 'pathname')             # Added Input
 )
-def generate_plot_trips_trend(store_trips, start_date, end_date):
+def generate_plot_trips_trend(store_trips, start_date, end_date, pathname):
+    if pathname != "/":
+        return no_update
+
     df = pd.DataFrame(store_trips.get("data"))
     trend_df = None
     (start_date, end_date) = iso_to_date_only(start_date, end_date)
     if not df.empty and has_permission('overview_trips_trend'):
-        trend_df = compute_trips_trend(df, date_col = "trip_start_time_str")
-    fig = generate_barplot(trend_df, x = 'date', y = 'count', title = f"Trips trend({start_date} to {end_date})")
+        trend_df = compute_trips_trend(df, date_col="trip_start_time_str")
+    fig = generate_barplot(trend_df, x='date', y='count', title=f"Trips trend ({start_date} to {end_date})")
     return fig
