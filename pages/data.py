@@ -126,12 +126,9 @@ def render_content(
 
     # Update selected tab
     selected_tab = tab
-    logging.debug(f"Callback - {selected_tab} Stage 1: Selected tab updated.")
     
     # Handle the UUIDs tab without fullscreen loading spinner
     if tab == 'tab-uuids-datatable':
-        start_time = time.time()
-        logging.debug(f"Callback - {selected_tab} Stage 2: Handling UUIDs tab.")
 
         # Ensure store_uuids contains the key 'data' which is a list of dictionaries
         if not isinstance(store_uuids, dict) or 'data' not in store_uuids:
@@ -152,9 +149,6 @@ def render_content(
         if not loaded_uuids_store.get('loaded', False):
             total_to_load = total_loaded + initial_batch_size
             total_to_load = min(total_to_load, len(uuids_list))  # Avoid loading more than available
-
-            logging.debug(f"Callback - {selected_tab} Stage 3: Loading next batch of UUIDs from {total_loaded} to {total_to_load}.")
-
             new_data = uuids_list[total_loaded:total_to_load]
 
             if new_data:
@@ -166,19 +160,15 @@ def render_content(
                 loaded_uuids_store['data'] = loaded_data  # Mark all data as loaded if done
                 loaded_uuids_store['loaded'] = len(loaded_data) >= len(uuids_list)
 
-                logging.debug(f"Callback - {selected_tab} Stage 4: New batch loaded. Total loaded: {len(loaded_data)}.")
-
         # Prepare the data to be displayed
         columns = perm_utils.get_uuids_columns()  # Get the relevant columns
         df = pd.DataFrame(loaded_data)
 
         if df.empty or not perm_utils.has_permission('data_uuids'):
-            logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
             return html.Div([html.P("No data available or you don't have permission.")]), loaded_uuids_store, True
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
-        logging.debug(f"Callback - {selected_tab} Stage 5: Returning appended data to update the UI.")
         content = html.Div([
             populate_datatable(df, table_id='uuid-table', page_current=current_page),  # Pass current_page
             html.P(
@@ -187,17 +177,10 @@ def render_content(
                 style={'margin': '15px 5px'}
             )
         ])
-
-        elapsed_time = time.time() - start_time
-        logging.info(f"Callback - {selected_tab} Stage 6: Total Time for UUIDs Tab: {elapsed_time:.2f} seconds")
-
         return content, loaded_uuids_store, False if not loaded_uuids_store['loaded'] else True
 
     # Handle other tabs normally
     elif tab == 'tab-trips-datatable':
-        start_time = time.time()
-        logging.debug(f"Callback - {selected_tab} Stage 2: Handling Trips tab.")
-
         data = store_trips["data"]
         columns = perm_utils.get_allowed_trip_columns()
         columns.update(col['label'] for col in perm_utils.get_allowed_named_trip_columns())
@@ -206,15 +189,12 @@ def render_content(
 
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
-            logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
             return None, loaded_uuids_store, True
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
         df = clean_location_data(df)
 
         trips_table = populate_datatable(df)
-        elapsed_time = time.time() - start_time
-        logging.info(f"Callback - {selected_tab} Stage 3: Total Time for Trips Tab: {elapsed_time:.2f} seconds")
 
         return html.Div([
             html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
@@ -222,9 +202,6 @@ def render_content(
         ]), loaded_uuids_store, True
 
     elif tab == 'tab-demographics-datatable':
-        start_time = time.time()
-        logging.debug(f"Callback - {selected_tab} Stage 2: Handling Demographics tab.")
-
         data = store_demographics["data"]
         has_perm = perm_utils.has_permission('data_demographics')
 
@@ -241,13 +218,7 @@ def render_content(
                 html.Div(id='subtabs-demographics-content')
             ]), loaded_uuids_store, True
 
-        elapsed_time = time.time() - start_time
-        logging.info(f"Callback - {selected_tab} Stage 3: Total Time for Demographics Tab: {elapsed_time:.2f} seconds")
-
     elif tab == 'tab-trajectories-datatable':
-        start_time = time.time()
-        logging.debug(f"Callback - {selected_tab} Stage 2: Handling Trajectories tab.")
-
         (start_date, end_date) = iso_to_date_only(start_date, end_date)
         # Fetch new data based on the selected key_list from the keylist-switch
         if store_trajectories == {} or key_list:
@@ -261,18 +232,12 @@ def render_content(
 
         df = pd.DataFrame(data)
         if df.empty or not has_perm:
-            logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
             return None, loaded_uuids_store, True
 
         df = df.drop(columns=[col for col in df.columns if col not in columns])
-
-        elapsed_time = time.time() - start_time
-        logging.info(f"Callback - {selected_tab} Stage 3: Total Time for Trajectories Tab: {elapsed_time:.2f} seconds")
-
         return populate_datatable(df), loaded_uuids_store, True
 
     # Default case: if no data is loaded or the tab is not handled
-    logging.debug(f"Callback - {selected_tab} Error Stage: No data loaded or unhandled tab.")
     return None, loaded_uuids_store, True
 
 
