@@ -1,9 +1,3 @@
-"""
-Note that the callback will trigger even if prevent_initial_call=True. This is because dcc.Location must
-be in app.py.  Since the dcc.Location component is not in the layout when navigating to this page, it triggers the callback.
-The workaround is to check if the input value is None.
-
-"""
 from uuid import UUID
 from dash import dcc, html, Input, Output, callback, register_page, no_update
 import dash_bootstrap_components as dbc
@@ -35,12 +29,12 @@ card_icon = {
 def wrap_with_skeleton(component_id, height, children_component):
     return dmc.Skeleton(
         height=height,
-        visible=True,
+        visible=True,  # Initially visible
         id=f'skeleton-{component_id}',
         children=children_component
     )
 
-layout = layout = dmc.MantineProvider(
+layout = dmc.MantineProvider(
     theme={
         "colorScheme": "light",  # or "dark"
     },
@@ -75,6 +69,7 @@ layout = layout = dmc.MantineProvider(
         style={"padding": "20px"}  # Optional padding for aesthetics
     )
 )
+
 def compute_sign_up_trend(uuid_df):
     uuid_df['update_ts'] = pd.to_datetime(uuid_df['update_ts'], utc=True)
     res_df = (
@@ -136,56 +131,6 @@ def generate_card(title_text, body_text, icon):
                 ),
             ])
     return card
-@callback(
-    Output('card-users', 'children'),
-    Output('skeleton-users', 'visible'),
-    Input('store-uuids', 'data'),
-    Input('url', 'pathname'),
-    Input('home-page-load', 'children')
-)
-def update_card_users(store_uuids, pathname, _):
-    if pathname != "/":
-        return no_update, no_update
-
-    if store_uuids is None or not has_permission('overview_users'):
-        number_of_users = 0
-    else:
-        number_of_users = store_uuids.get('length', 0)
-
-    card = generate_card("# Users", f"{number_of_users} users", "fa fa-users")
-    # Hide the skeleton by setting visible to False
-    return card, False
-@callback(
-    Output('card-active-users', 'children'),
-    Output('skeleton-active-users', 'visible'),
-    Input('store-uuids', 'data'),
-    Input('url', 'pathname'),
-    Input('home-page-load', 'children')
-)
-def update_card_active_users(store_uuids, pathname, _):
-    if pathname != "/":
-        return no_update, no_update
-
-    uuid_df = pd.DataFrame(store_uuids.get('data')) if store_uuids else pd.DataFrame()
-    number_of_active_users = 0
-    if not uuid_df.empty and has_permission('overview_active_users'):
-        one_day = 24 * 60 * 60
-        number_of_active_users = get_number_of_active_users(uuid_df['user_id'], one_day)
-    card = generate_card("# Active users", f"{number_of_active_users} users", "fa fa-person-walking")
-    return card, False
-@callback(
-    Output('card-trips', 'children'),
-    Output('skeleton-trips', 'visible'),
-    Input('store-trips', 'data'),
-    Input('url', 'pathname')
-)
-def update_card_trips(store_trips, pathname):
-    if pathname != "/":
-        return no_update, no_update
-
-    number_of_trips = store_trips.get('length') if (store_trips and has_permission('overview_trips')) else 0
-    card = generate_card("# Confirmed trips", f"{number_of_trips} trips", "fa fa-angles-right")
-    return card, False
 
 def generate_barplot(data, x, y, title):
     fig = px.bar()
@@ -193,39 +138,98 @@ def generate_barplot(data, x, y, title):
         fig = px.bar(data, x=x, y=y)
     fig.update_layout(title=title)
     return fig
+
 @callback(
-    Output('fig-sign-up-trend', 'figure'),
-    Output('skeleton-sign-up-trend', 'visible'),
-    Input('store-uuids', 'data'),
-    Input('url', 'pathname')
+    [
+        Output('card-users', 'children'),
+        Output('skeleton-users', 'visible'),
+        Output('card-active-users', 'children'),
+        Output('skeleton-active-users', 'visible'),
+        Output('card-trips', 'children'),
+        Output('skeleton-trips', 'visible'),
+        Output('fig-sign-up-trend', 'figure'),
+        Output('skeleton-sign-up-trend', 'visible'),
+        Output('fig-trips-trend', 'figure'),
+        Output('skeleton-trips-trend', 'visible'),
+    ],
+    [
+        Input('store-uuids', 'data'),
+        Input('store-trips', 'data'),
+        Input('date-picker', 'start_date'),
+        Input('date-picker', 'end_date'),
+        Input('url', 'pathname'),
+        Input('home-page-load', 'children')
+    ]
 )
-def generate_plot_sign_up_trend(store_uuids, pathname):
+def update_all_components(store_uuids, store_trips, start_date, end_date, pathname, _):
     if pathname != "/":
-        return no_update, no_update
+        return [no_update] * 10
+
+    # Initialize all outputs
+    card_users = no_update
+    skeleton_users = no_update
+    card_active_users = no_update
+    skeleton_active_users = no_update
+    card_trips = no_update
+    skeleton_trips = no_update
+    fig_sign_up_trend = no_update
+    skeleton_sign_up_trend = no_update
+    fig_trips_trend = no_update
+    skeleton_trips_trend = no_update
+
+    # Flags to check if each component's data is ready
+    all_ready = True
+
+    # Update Users Card
+    if store_uuids is None or not has_permission('overview_users'):
+        number_of_users = 0
+    else:
+        number_of_users = store_uuids.get('length', 0)
+    card_users = generate_card("# Users", f"{number_of_users} users", "fa fa-users")
+
+    # Update Active Users Card
+    uuid_df = pd.DataFrame(store_uuids.get('data')) if store_uuids else pd.DataFrame()
+    number_of_active_users = 0
+    if not uuid_df.empty and has_permission('overview_active_users'):
+        one_day = 24 * 60 * 60
+        number_of_active_users = get_number_of_active_users(uuid_df['user_id'], one_day)
+    card_active_users = generate_card("# Active users", f"{number_of_active_users} users", "fa fa-person-walking")
+
+    # Update Trips Card
+    number_of_trips = store_trips.get('length') if (store_trips and has_permission('overview_trips')) else 0
+    card_trips = generate_card("# Confirmed trips", f"{number_of_trips} trips", "fa fa-angles-right")
+
+    # Update Sign-Up Trend Figure
     df = pd.DataFrame(store_uuids.get("data")) if store_uuids else pd.DataFrame()
     trend_df = None
     if not df.empty and has_permission('overview_signup_trends'):
         trend_df = compute_sign_up_trend(df)
-    fig = generate_barplot(trend_df, x='date', y='count', title="Sign-ups trend")
-    return fig, False
+    fig_sign_up_trend = generate_barplot(trend_df, x='date', y='count', title="Sign-ups trend")
 
-# Callbacks to update Trips Trend Graph
-@callback(
-    Output('fig-trips-trend', 'figure'),
-    Output('skeleton-trips-trend', 'visible'),
-    Input('store-trips', 'data'),
-    Input('date-picker', 'start_date'),
-    Input('date-picker', 'end_date'),
-    Input('url', 'pathname')
-)
-def generate_plot_trips_trend(store_trips, start_date, end_date, pathname):
-    if pathname != "/":
-        return no_update, no_update
-
-    df = pd.DataFrame(store_trips.get("data")) if store_trips else pd.DataFrame()
-    trend_df = None
+    # Update Trips Trend Figure
+    trips_df = pd.DataFrame(store_trips.get("data")) if store_trips else pd.DataFrame()
+    trend_trips_df = None
     (start_date, end_date) = iso_to_date_only(start_date, end_date)
-    if not df.empty and has_permission('overview_trips_trend'):
-        trend_df = compute_trips_trend(df, date_col="trip_start_time_str")
-    fig = generate_barplot(trend_df, x='date', y='count', title=f"Trips trend ({start_date} to {end_date})")
-    return fig, False
+    if not trips_df.empty and has_permission('overview_trips_trend'):
+        trend_trips_df = compute_trips_trend(trips_df, date_col="trip_start_time_str")
+    fig_trips_trend = generate_barplot(trend_trips_df, x='date', y='count', title=f"Trips trend ({start_date} to {end_date})")
+
+    # Set all skeletons to False since all components are updated
+    skeleton_users = False
+    skeleton_active_users = False
+    skeleton_trips = False
+    skeleton_sign_up_trend = False
+    skeleton_trips_trend = False
+
+    return [
+        card_users,
+        skeleton_users,
+        card_active_users,
+        skeleton_active_users,
+        card_trips,
+        skeleton_trips,
+        fig_sign_up_trend,
+        skeleton_sign_up_trend,
+        fig_trips_trend,
+        skeleton_trips_trend,
+    ]
