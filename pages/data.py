@@ -129,7 +129,6 @@ def render_content(
     
     # Handle the UUIDs tab without fullscreen loading spinner
     if tab == 'tab-uuids-datatable':
-
         # Ensure store_uuids contains the key 'data' which is a list of dictionaries
         if not isinstance(store_uuids, dict) or 'data' not in store_uuids:
             logging.error(f"Expected store_uuids to be a dict with a 'data' key, but got {type(store_uuids)}")
