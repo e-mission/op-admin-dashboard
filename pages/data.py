@@ -155,7 +155,6 @@ def render_content(
                 # Process and append the new data to the loaded store
                 processed_data = db_utils.add_user_stats(new_data, initial_batch_size)
                 loaded_data.extend(processed_data)
-                
                 # Update the store with the new data
                 loaded_uuids_store['data'] = loaded_data  # Mark all data as loaded if done
                 loaded_uuids_store['loaded'] = len(loaded_data) >= len(uuids_list)
