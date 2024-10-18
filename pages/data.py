@@ -169,7 +169,7 @@ def render_content(
         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
         content = html.Div([
-            populate_datatable(df, table_id='uuid-table', page_current=current_page),  # Pass current_page
+            populate_datatable(df, table_id='uuid-table', page_current=current_page),
             html.P(
                 f"Showing {len(loaded_data)} of {len(uuids_list)} UUIDs." +
                 (f" Loading 10 more..." if not loaded_uuids_store.get('loaded', False) else ""),
