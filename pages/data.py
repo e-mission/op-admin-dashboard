@@ -198,7 +198,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
         logging.debug("Returning appended data to update the UI.")
         content = html.Div([
-            populate_datatable(df),
+            populate_datatable(df, table_id='uuid-table', page_current=current_page),
             html.P(
                 f"Showing {len(loaded_data)} of {len(uuids_list)} UUIDs." +
                 (f" Loading 10 more..." if not loaded_uuids_store.get('loaded', False) else ""),
