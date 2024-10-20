@@ -41,13 +41,13 @@ def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude=None):
     # Store stage1 timing after exiting the 'with' block
     if not isinstance(df, pd.DataFrame) or len(df) == 0:
         esdsq.store_dashboard_time(
-            "db_utils/df_to_filtered_records/validate_dataframe_and_set_defaults",
+            "admin/db_utils/df_to_filtered_records/validate_dataframe_and_set_defaults",
             stage1_timer
         )
         return []
     else:
         esdsq.store_dashboard_time(
-            "db_utils/df_to_filtered_records/validate_dataframe_and_set_defaults",
+            "admin/db_utils/df_to_filtered_records/validate_dataframe_and_set_defaults",
             stage1_timer
         )
     
@@ -61,7 +61,7 @@ def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude=None):
             df = df[~df[col_to_filter].isin(vals_to_exclude)]
     # Store stage2 timing after exiting the 'with' block
     esdsq.store_dashboard_time(
-        "db_utils/df_to_filtered_records/perform_filtering",
+        "admin/db_utils/df_to_filtered_records/perform_filtering",
         stage2_timer
     )
     
@@ -69,7 +69,7 @@ def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude=None):
     with ect.Timer() as total_timer:
         pass  # No operations here; 'elapsed_ms' will capture the time from start to now
     esdsq.store_dashboard_time(
-        "db_utils/df_to_filtered_records/total_time",
+        "admin/db_utils/df_to_filtered_records/total_time",
         total_timer
     )
     
@@ -91,7 +91,7 @@ def query_uuids(start_date: str, end_date: str, tz: str):
         with ect.Timer() as stage1_timer:
             logging.debug("Querying the UUID DB for (no date range)")
         esdsq.store_dashboard_time(
-            "db_utils/query_uuids/log_debug_message",
+            "admin/db_utils/query_uuids/log_debug_message",
             stage1_timer
         )
 
@@ -105,7 +105,7 @@ def query_uuids(start_date: str, end_date: str, tz: str):
             entries = edb.get_uuid_db().find()
             df = pd.json_normalize(list(entries))
         esdsq.store_dashboard_time(
-            "db_utils/query_uuids/fetch_aggregate_time_series",
+            "admin/db_utils/query_uuids/fetch_aggregate_time_series",
             stage2_timer
         )
         
@@ -117,12 +117,12 @@ def query_uuids(start_date: str, end_date: str, tz: str):
                 df['user_token'] = df['user_email']
                 df.drop(columns=["uuid", "_id"], inplace=True)
         esdsq.store_dashboard_time(
-            "db_utils/query_uuids/process_dataframe",
+            "admin/db_utils/query_uuids/process_dataframe",
             stage3_timer
         )
     
     esdsq.store_dashboard_time(
-        "db_utils/query_uuids/total_time",
+        "admin/db_utils/query_uuids/total_time",
         total_timer
     )
     
@@ -142,7 +142,7 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
         with ect.Timer() as stage1_timer:
             (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
         esdsq.store_dashboard_time(
-            "db_utils/query_confirmed_trips/convert_date_range_to_timestamps",
+            "admin/db_utils/query_confirmed_trips/convert_date_range_to_timestamps",
             stage1_timer
         )
         
@@ -150,7 +150,7 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
         with ect.Timer() as stage2_timer:
             ts = esta.TimeSeries.get_aggregate_time_series()
         esdsq.store_dashboard_time(
-            "db_utils/query_confirmed_trips/fetch_aggregate_time_series",
+            "admin/db_utils/query_confirmed_trips/fetch_aggregate_time_series",
             stage2_timer
         )
         
@@ -163,7 +163,7 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
             )
             user_input_cols = []
         esdsq.store_dashboard_time(
-            "db_utils/query_confirmed_trips/fetch_confirmed_trip_entries",
+            "admin/db_utils/query_confirmed_trips/fetch_confirmed_trip_entries",
             stage3_timer
         )
         
@@ -174,7 +174,7 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
                     if df[col].dtype == 'object':
                         df[col] = df[col].apply(str)
             esdsq.store_dashboard_time(
-                "db_utils/query_confirmed_trips/convert_object_columns_to_strings",
+                "admin/db_utils/query_confirmed_trips/convert_object_columns_to_strings",
                 stage4_timer
             )
             
@@ -184,7 +184,7 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
                 columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
                 df.drop(columns=columns_to_drop, inplace=True)
             esdsq.store_dashboard_time(
-                "db_utils/query_confirmed_trips/drop_metadata_columns",
+                "admin/db_utils/query_confirmed_trips/drop_metadata_columns",
                 stage5_timer
             )
             
@@ -195,10 +195,12 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
                     if col in df.columns:
                         df.drop(columns=[col], inplace=True)
             esdsq.store_dashboard_time(
-                "db_utils/query_confirmed_trips/drop_or_modify_excluded_columns",
+                "admin/db_utils/query_confirmed_trips/drop_or_modify_excluded_columns",
                 stage6_timer
             )
             
+            # I dont think we even implemented this..
+            # need fix asap
             # Stage 7: Handle 'background/location' Key
             with ect.Timer() as stage7_timer:
                 # Check if 'background/location' is in the key_list
@@ -212,7 +214,7 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
                         lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
                     )
             esdsq.store_dashboard_time(
-                "db_utils/query_confirmed_trips/handle_background_location_key",
+                "admin/db_utils/query_confirmed_trips/handle_background_location_key",
                 stage7_timer
             )
             
@@ -230,7 +232,7 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
                        "_id" not in c
                 ]
             esdsq.store_dashboard_time(
-                "db_utils/query_confirmed_trips/clean_and_modify_dataframes",
+                "admin/db_utils/query_confirmed_trips/clean_and_modify_dataframes",
                 stage8_timer
             )
             
@@ -266,12 +268,12 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
 
                 df['data.duration'] = df['data.duration'].apply(lambda d: arrow.utcnow().shift(seconds=d).humanize(only_distance=True))
             esdsq.store_dashboard_time(
-                "db_utils/query_confirmed_trips/filter_and_combine_columns",
+                "admin/db_utils/query_confirmed_trips/filter_and_combine_columns",
                 stage9_timer
             )
         
     esdsq.store_dashboard_time(
-        "db_utils/query_confirmed_trips/total_time",
+        "admin/db_utils/query_confirmed_trips/total_time",
         total_timer
     )
     return (df, user_input_cols)
@@ -290,7 +292,7 @@ def query_demographics():
             # Returns dictionary of df where key represent different survey id and values are df for each survey
             logging.debug("Querying the demographics for (no date range)")
         esdsq.store_dashboard_time(
-            "db_utils/query_demographics/log_debug_message",
+            "admin/db_utils/query_demographics/log_debug_message",
             stage1_timer
         )
 
@@ -298,7 +300,7 @@ def query_demographics():
         with ect.Timer() as stage2_timer:
             ts = esta.TimeSeries.get_aggregate_time_series()
         esdsq.store_dashboard_time(
-            "db_utils/query_demographics/fetch_aggregate_time_series",
+            "admin/db_utils/query_demographics/fetch_aggregate_time_series",
             stage2_timer
         )
 
@@ -307,7 +309,7 @@ def query_demographics():
             entries = ts.find_entries(["manual/demographic_survey"])
             data = list(entries)
         esdsq.store_dashboard_time(
-            "db_utils/query_demographics/find_demographic_survey_entries",
+            "admin/db_utils/query_demographics/find_demographic_survey_entries",
             stage3_timer
         )
 
@@ -320,7 +322,7 @@ def query_demographics():
                     available_key[survey_key] = []
                 available_key[survey_key].append(entry)
         esdsq.store_dashboard_time(
-            "db_utils/query_demographics/organize_entries_by_survey_key",
+            "admin/db_utils/query_demographics/organize_entries_by_survey_key",
             stage4_timer
         )
 
@@ -331,7 +333,7 @@ def query_demographics():
                 df = pd.json_normalize(json_object)
                 dataframes[key] = df
         esdsq.store_dashboard_time(
-            "db_utils/query_demographics/create_dataframes_from_organized_entries",
+            "admin/db_utils/query_demographics/create_dataframes_from_organized_entries",
             stage5_timer
         )
 
@@ -363,18 +365,18 @@ def query_demographics():
                         if col in df.columns:
                             df.drop(columns=[col], inplace=True)
         esdsq.store_dashboard_time(
-            "db_utils/query_demographics/clean_and_modify_dataframes",
+            "admin/db_utils/query_demographics/clean_and_modify_dataframes",
             stage6_timer
         )
 
     esdsq.store_dashboard_time(
-        "db_utils/query_demographics/total_time",
+        "admin/db_utils/query_demographics/total_time",
         total_timer
     )
 
     return dataframes
 
-def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
+def query_trajectories(start_date: str, end_date: str, tz: str, key_list: list[str]):
     """
     Queries trajectories within a specified date range and timezone based on provided key list.
     
@@ -389,7 +391,7 @@ def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
         with ect.Timer() as stage1_timer:
             (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
         esdsq.store_dashboard_time(
-            "db_utils/query_trajectories/convert_date_range_to_timestamps",
+            "admin/db_utils/query_trajectories/convert_date_range_to_timestamps",
             stage1_timer
         )
         
@@ -397,7 +399,7 @@ def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
         with ect.Timer() as stage2_timer:
             ts = esta.TimeSeries.get_aggregate_time_series()
         esdsq.store_dashboard_time(
-            "db_utils/query_trajectories/fetch_aggregate_time_series",
+            "admin/db_utils/query_trajectories/fetch_aggregate_time_series",
             stage2_timer
         )
         
@@ -411,7 +413,7 @@ def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
             )
             df = pd.json_normalize(list(entries))
         esdsq.store_dashboard_time(
-            "db_utils/query_trajectories/fetch_trajectory_entries",
+            "admin/db_utils/query_trajectories/fetch_trajectory_entries",
             stage3_timer
         )
         
@@ -422,7 +424,7 @@ def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
                     if df[col].dtype == 'object':
                         df[col] = df[col].apply(str)
             esdsq.store_dashboard_time(
-                "db_utils/query_trajectories/convert_object_columns_to_strings",
+                "admin/db_utils/query_trajectories/convert_object_columns_to_strings",
                 stage4_timer
             )
             
@@ -432,7 +434,7 @@ def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
                 columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
                 df.drop(columns=columns_to_drop, inplace=True)
             esdsq.store_dashboard_time(
-                "db_utils/query_trajectories/drop_metadata_columns",
+                "admin/db_utils/query_trajectories/drop_metadata_columns",
                 stage5_timer
             )
             
@@ -443,7 +445,7 @@ def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
                     if col in df.columns:
                         df.drop(columns=[col], inplace=True)
             esdsq.store_dashboard_time(
-                "db_utils/query_trajectories/drop_or_modify_excluded_columns",
+                "admin/db_utils/query_trajectories/drop_or_modify_excluded_columns",
                 stage6_timer
             )
             
@@ -460,12 +462,12 @@ def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
                         lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
                     )
             esdsq.store_dashboard_time(
-                "db_utils/query_trajectories/handle_background_location_key",
+                "admin/db_utils/query_trajectories/handle_background_location_key",
                 stage7_timer
             )
         
     esdsq.store_dashboard_time(
-        "db_utils/query_trajectories/total_time",
+        "admin/db_utils/query_trajectories/total_time",
         total_timer
     )
     return df
@@ -578,7 +580,7 @@ def query_segments_crossing_endpoints(
         with ect.Timer() as stage1_timer:
             start_ts, end_ts = iso_range_to_ts_range(start_date, end_date, tz)
         esdsq.store_dashboard_time(
-            "db_utils/query_segments_crossing_endpoints/convert_date_range_to_timestamps",
+            "admin/db_utils/query_segments_crossing_endpoints/convert_date_range_to_timestamps",
             stage1_timer
         )
         
@@ -590,7 +592,7 @@ def query_segments_crossing_endpoints(
             }
             agg_ts = estag.AggregateTimeSeries().get_aggregate_time_series()
         esdsq.store_dashboard_time(
-            "db_utils/query_segments_crossing_endpoints/setup_time_and_user_exclusion_queries",
+            "admin/db_utils/query_segments_crossing_endpoints/setup_time_and_user_exclusion_queries",
             stage2_timer
         )
 
@@ -605,16 +607,16 @@ def query_segments_crossing_endpoints(
             locs_matching_start = locs_matching_start.drop_duplicates(subset=['section'])
             if locs_matching_start.empty:
                 esdsq.store_dashboard_time(
-                    "db_utils/query_segments_crossing_endpoints/fetch_locations_matching_start_region",
+                    "admin/db_utils/query_segments_crossing_endpoints/fetch_locations_matching_start_region",
                     stage3_timer
                 )
                 esdsq.store_dashboard_time(
-                    "db_utils/query_segments_crossing_endpoints/total_time",
+                    "admin/db_utils/query_segments_crossing_endpoints/total_time",
                     total_timer
                 )
                 return locs_matching_start
         esdsq.store_dashboard_time(
-            "db_utils/query_segments_crossing_endpoints/fetch_locations_matching_start_region",
+            "admin/db_utils/query_segments_crossing_endpoints/fetch_locations_matching_start_region",
             stage3_timer
         )
 
@@ -629,16 +631,16 @@ def query_segments_crossing_endpoints(
             locs_matching_end = locs_matching_end.drop_duplicates(subset=['section'])
             if locs_matching_end.empty:
                 esdsq.store_dashboard_time(
-                    "db_utils/query_segments_crossing_endpoints/fetch_locations_matching_end_region",
+                    "admin/db_utils/query_segments_crossing_endpoints/fetch_locations_matching_end_region",
                     stage4_timer
                 )
                 esdsq.store_dashboard_time(
-                    "db_utils/query_segments_crossing_endpoints/total_time",
+                    "admin/db_utils/query_segments_crossing_endpoints/total_time",
                     total_timer
                 )
                 return locs_matching_end
         esdsq.store_dashboard_time(
-            "db_utils/query_segments_crossing_endpoints/fetch_locations_matching_end_region",
+            "admin/db_utils/query_segments_crossing_endpoints/fetch_locations_matching_end_region",
             stage4_timer
         )
 
@@ -654,7 +656,7 @@ def query_segments_crossing_endpoints(
             filtered['end_fmt_time'] = filtered['fmt_time_y']
             filtered['user_id'] = filtered['user_id_y']
         esdsq.store_dashboard_time(
-            "db_utils/query_segments_crossing_endpoints/merge_and_filter_segments",
+            "admin/db_utils/query_segments_crossing_endpoints/merge_and_filter_segments",
             stage5_timer
         )
 
@@ -680,12 +682,12 @@ def query_segments_crossing_endpoints(
                 )
                 result = pd.DataFrame.from_dict([])
         esdsq.store_dashboard_time(
-            "db_utils/query_segments_crossing_endpoints/evaluate_user_count_and_final_filtering",
+            "admin/db_utils/query_segments_crossing_endpoints/evaluate_user_count_and_final_filtering",
             stage6_timer
         )
 
     esdsq.store_dashboard_time(
-        "db_utils/query_segments_crossing_endpoints/total_time",
+        "admin/db_utils/query_segments_crossing_endpoints/total_time",
         total_timer
     )
     return result

@@ -65,7 +65,7 @@ def compute_sign_up_trend(uuid_df):
         with ect.Timer() as stage1_timer:
             uuid_df['update_ts'] = pd.to_datetime(uuid_df['update_ts'], utc=True)
         esdsq.store_dashboard_time(
-            "home/compute_sign_up_trend/convert_update_ts_to_datetime",
+            "admin/home/compute_sign_up_trend/convert_update_ts_to_datetime",
             stage1_timer
         )
         
@@ -79,12 +79,12 @@ def compute_sign_up_trend(uuid_df):
                 .rename(columns={'update_ts': 'date'})
             )
         esdsq.store_dashboard_time(
-            "home/compute_sign_up_trend/group_by_date_and_count",
+            "admin/home/compute_sign_up_trend/group_by_date_and_count",
             stage2_timer
         )
     
     esdsq.store_dashboard_time(
-        "home/compute_sign_up_trend/total_time",
+        "admin/home/compute_sign_up_trend/total_time",
         total_timer
     )
     
@@ -105,7 +105,7 @@ def compute_trips_trend(trips_df, date_col):
             trips_df[date_col] = pd.to_datetime(trips_df[date_col], utc=True)
             trips_df[date_col] = pd.DatetimeIndex(trips_df[date_col]).date
         esdsq.store_dashboard_time(
-            "home/compute_trips_trend/convert_date_col_to_datetime_and_extract_date",
+            "admin/home/compute_trips_trend/convert_date_col_to_datetime_and_extract_date",
             stage1_timer
         )
         
@@ -119,12 +119,12 @@ def compute_trips_trend(trips_df, date_col):
                 .rename(columns={date_col: 'date'})
             )
         esdsq.store_dashboard_time(
-            "home/compute_trips_trend/group_by_date_and_count_trips",
+            "admin/home/compute_trips_trend/group_by_date_and_count_trips",
             stage2_timer
         )
     
     esdsq.store_dashboard_time(
-        "home/compute_trips_trend/total_time",
+        "admin/home/compute_trips_trend/total_time",
         total_timer
     )
     
@@ -143,7 +143,7 @@ def find_last_get(uuid_list):
         with ect.Timer() as stage1_timer:
             uuid_objects = [UUID(npu) for npu in uuid_list]
         esdsq.store_dashboard_time(
-            "home/find_last_get/convert_uuid_strings_to_objects",
+            "admin/home/find_last_get/convert_uuid_strings_to_objects",
             stage1_timer
         )
         
@@ -157,12 +157,12 @@ def find_last_get(uuid_list):
             ]
             last_item = list(edb.get_timeseries_db().aggregate(pipeline))
         esdsq.store_dashboard_time(
-            "home/find_last_get/perform_aggregate_query",
+            "admin/home/find_last_get/perform_aggregate_query",
             stage2_timer
         )
     
     esdsq.store_dashboard_time(
-        "home/find_last_get/total_time",
+        "admin/home/find_last_get/total_time",
         total_timer
     )
     
@@ -182,7 +182,7 @@ def get_number_of_active_users(uuid_list, threshold):
         with ect.Timer() as stage1_timer:
             last_get_entries = find_last_get(uuid_list)
         esdsq.store_dashboard_time(
-            "home/get_number_of_active_users/find_last_get_entries",
+            "admin/home/get_number_of_active_users/find_last_get_entries",
             stage1_timer
         )
         
@@ -197,12 +197,12 @@ def get_number_of_active_users(uuid_list, threshold):
                     if last_call_diff <= threshold:
                         number_of_active_users += 1
         esdsq.store_dashboard_time(
-            "home/get_number_of_active_users/calculate_active_users",
+            "admin/home/get_number_of_active_users/calculate_active_users",
             stage2_timer
         )
     
     esdsq.store_dashboard_time(
-        "home/get_number_of_active_users/total_time",
+        "admin/home/get_number_of_active_users/total_time",
         total_timer
     )
     
@@ -235,7 +235,7 @@ def generate_card(title_text, body_text, icon):
             ),
         ])
     esdsq.store_dashboard_time(
-        "home/generate_card/total_time",
+        "admin/home/generate_card/total_time",
         total_timer
     )
     return card
@@ -257,7 +257,7 @@ def update_card_users(store_uuids):
         with ect.Timer() as stage1_timer:
             number_of_users = store_uuids.get('length') if has_permission('overview_users') else 0
         esdsq.store_dashboard_time(
-            "home/update_card_users/retrieve_number_of_users",
+            "admin/home/update_card_users/retrieve_number_of_users",
             stage1_timer
         )
         
@@ -265,12 +265,12 @@ def update_card_users(store_uuids):
         with ect.Timer() as stage2_timer:
             card = generate_card("# Users", f"{number_of_users} users", "fa fa-users")
         esdsq.store_dashboard_time(
-            "home/update_card_users/generate_user_card",
+            "admin/home/update_card_users/generate_user_card",
             stage2_timer
         )
     
     esdsq.store_dashboard_time(
-        "home/update_card_users/total_time",
+        "admin/home/update_card_users/total_time",
         total_timer
     )
     return card
@@ -292,7 +292,7 @@ def update_card_active_users(store_uuids):
         with ect.Timer() as stage1_timer:
             uuid_df = pd.DataFrame(store_uuids.get('data'))
         esdsq.store_dashboard_time(
-            "home/update_card_active_users/create_dataframe",
+            "admin/home/update_card_active_users/create_dataframe",
             stage1_timer
         )
         
@@ -303,7 +303,7 @@ def update_card_active_users(store_uuids):
                 one_day = 24 * 60 * 60
                 number_of_active_users = get_number_of_active_users(uuid_df['user_id'], one_day)
         esdsq.store_dashboard_time(
-            "home/update_card_active_users/calculate_number_of_active_users",
+            "admin/home/update_card_active_users/calculate_number_of_active_users",
             stage2_timer
         )
         
@@ -311,12 +311,12 @@ def update_card_active_users(store_uuids):
         with ect.Timer() as stage3_timer:
             card = generate_card("# Active users", f"{number_of_active_users} users", "fa fa-person-walking")
         esdsq.store_dashboard_time(
-            "home/update_card_active_users/generate_active_users_card",
+            "admin/home/update_card_active_users/generate_active_users_card",
             stage3_timer
         )
     
     esdsq.store_dashboard_time(
-        "home/update_card_active_users/total_time",
+        "admin/home/update_card_active_users/total_time",
         total_timer
     )
     return card
@@ -338,7 +338,7 @@ def update_card_trips(store_trips):
         with ect.Timer() as stage1_timer:
             number_of_trips = store_trips.get('length') if has_permission('overview_trips') else 0
         esdsq.store_dashboard_time(
-            "home/update_card_trips/retrieve_number_of_trips",
+            "admin/home/update_card_trips/retrieve_number_of_trips",
             stage1_timer
         )
         
@@ -346,12 +346,12 @@ def update_card_trips(store_trips):
         with ect.Timer() as stage2_timer:
             card = generate_card("# Confirmed trips", f"{number_of_trips} trips", "fa fa-angles-right")
         esdsq.store_dashboard_time(
-            "home/update_card_trips/generate_trips_card",
+            "admin/home/update_card_trips/generate_trips_card",
             stage2_timer
         )
     
     esdsq.store_dashboard_time(
-        "home/update_card_trips/total_time",
+        "admin/home/update_card_trips/total_time",
         total_timer
     )
     return card
@@ -373,7 +373,7 @@ def generate_barplot(data, x, y, title):
             fig = px.bar(data, x=x, y=y)
         fig.update_layout(title=title)
     esdsq.store_dashboard_time(
-        "home/generate_barplot/total_time",
+        "admin/home/generate_barplot/total_time",
         total_timer
     )
     return fig
@@ -395,7 +395,7 @@ def generate_plot_sign_up_trend(store_uuids):
         with ect.Timer() as stage1_timer:
             df = pd.DataFrame(store_uuids.get("data"))
         esdsq.store_dashboard_time(
-            "home/generate_plot_sign_up_trend/convert_uuid_data_to_dataframe",
+            "admin/home/generate_plot_sign_up_trend/convert_uuid_data_to_dataframe",
             stage1_timer
         )
         
@@ -405,7 +405,7 @@ def generate_plot_sign_up_trend(store_uuids):
             if not df.empty and has_permission('overview_signup_trends'):
                 trend_df = compute_sign_up_trend(df)
         esdsq.store_dashboard_time(
-            "home/generate_plot_sign_up_trend/compute_sign_up_trend",
+            "admin/home/generate_plot_sign_up_trend/compute_sign_up_trend",
             stage2_timer
         )
         
@@ -413,12 +413,12 @@ def generate_plot_sign_up_trend(store_uuids):
         with ect.Timer() as stage3_timer:
             fig = generate_barplot(trend_df, x='date', y='count', title="Sign-ups trend")
         esdsq.store_dashboard_time(
-            "home/generate_plot_sign_up_trend/generate_bar_plot",
+            "admin/home/generate_plot_sign_up_trend/generate_bar_plot",
             stage3_timer
         )
     
     esdsq.store_dashboard_time(
-        "home/generate_plot_sign_up_trend/total_time",
+        "admin/home/generate_plot_sign_up_trend/total_time",
         total_timer
     )
     return fig
@@ -444,7 +444,7 @@ def generate_plot_trips_trend(store_trips, start_date, end_date):
         with ect.Timer() as stage1_timer:
             df = pd.DataFrame(store_trips.get("data"))
         esdsq.store_dashboard_time(
-            "home/generate_plot_trips_trend/convert_trip_data_to_dataframe",
+            "admin/home/generate_plot_trips_trend/convert_trip_data_to_dataframe",
             stage1_timer
         )
         
@@ -452,7 +452,7 @@ def generate_plot_trips_trend(store_trips, start_date, end_date):
         with ect.Timer() as stage2_timer:
             (start_date, end_date) = iso_to_date_only(start_date, end_date)
         esdsq.store_dashboard_time(
-            "home/generate_plot_trips_trend/convert_and_extract_date_range",
+            "admin/home/generate_plot_trips_trend/convert_and_extract_date_range",
             stage2_timer
         )
         
@@ -462,7 +462,7 @@ def generate_plot_trips_trend(store_trips, start_date, end_date):
             if not df.empty and has_permission('overview_trips_trend'):
                 trend_df = compute_trips_trend(df, date_col="trip_start_time_str")
         esdsq.store_dashboard_time(
-            "home/generate_plot_trips_trend/compute_trips_trend",
+            "admin/home/generate_plot_trips_trend/compute_trips_trend",
             stage3_timer
         )
         
@@ -470,12 +470,12 @@ def generate_plot_trips_trend(store_trips, start_date, end_date):
         with ect.Timer() as stage4_timer:
             fig = generate_barplot(trend_df, x='date', y='count', title=f"Trips trend({start_date} to {end_date})")
         esdsq.store_dashboard_time(
-            "home/generate_plot_trips_trend/generate_bar_plot",
+            "admin/home/generate_plot_trips_trend/generate_bar_plot",
             stage4_timer
         )
     
     esdsq.store_dashboard_time(
-        "home/generate_plot_trips_trend/total_time",
+        "admin/home/generate_plot_trips_trend/total_time",
         total_timer
     )
     return fig

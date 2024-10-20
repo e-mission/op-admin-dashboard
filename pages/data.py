@@ -70,7 +70,7 @@ def clean_location_data(df):
                     lambda x: f'({x[0]}, {x[1]})' if isinstance(x, (list, tuple)) and len(x) >= 2 else x
                 )
         esdsq.store_dashboard_time(
-            "data/clean_location_data/clean_start_loc_coordinates",
+            "admin/data/clean_location_data/clean_start_loc_coordinates",
             stage1_timer  # Pass the Timer object
         )
 
@@ -81,12 +81,12 @@ def clean_location_data(df):
                     lambda x: f'({x[0]}, {x[1]})' if isinstance(x, (list, tuple)) and len(x) >= 2 else x
                 )
         esdsq.store_dashboard_time(
-            "data/clean_location_data/clean_end_loc_coordinates",
+            "admin/data/clean_location_data/clean_end_loc_coordinates",
             stage2_timer  # Pass the Timer object
         )
     
     esdsq.store_dashboard_time(
-        "data/clean_location_data/total_time",
+        "admin/data/clean_location_data/total_time",
         total_timer  # Pass the Timer object
     )
     
@@ -111,7 +111,7 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
         with ect.Timer(verbose=False) as stage1_timer:
             df = query_trajectories(start_date=start_date, end_date=end_date, tz=tz, key_list=key_list)
         esdsq.store_dashboard_time(
-            "data/update_store_trajectories/query_trajectories",
+            "admin/data/update_store_trajectories/query_trajectories",
             stage1_timer  # Pass the Timer object
         )
 
@@ -119,7 +119,7 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
         with ect.Timer(verbose=False) as stage2_timer:
             records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
         esdsq.store_dashboard_time(
-            "data/update_store_trajectories/filter_records",
+            "admin/data/update_store_trajectories/filter_records",
             stage2_timer  # Pass the Timer object
         )
 
@@ -130,12 +130,12 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
                 "length": len(records),
             }
         esdsq.store_dashboard_time(
-            "data/update_store_trajectories/create_store_dict",
+            "admin/data/update_store_trajectories/create_store_dict",
             stage3_timer  # Pass the Timer object
         )
     
     esdsq.store_dashboard_time(
-        "data/update_store_trajectories/total_time",
+        "admin/data/update_store_trajectories/total_time",
         total_timer  # Pass the Timer object
     )
     
@@ -162,12 +162,12 @@ def show_keylist_switch(tab):
             else:
                 style = {'display': 'none'}  # Hide the keylist-switch on all other tabs
         esdsq.store_dashboard_time(
-            "data/show_keylist_switch/determine_display_style",
+            "admin/data/show_keylist_switch/determine_display_style",
             stage1_timer  # Pass the Timer object
         )
     
     esdsq.store_dashboard_time(
-        "data/show_keylist_switch/total_time",
+        "admin/data/show_keylist_switch/total_time",
         total_timer  # Pass the Timer object
     )
     
@@ -353,7 +353,7 @@ def update_sub_tab(tab, store_demographics):
                 data = {}
                 columns = []
         esdsq.store_dashboard_time(
-            "data/update_sub_tab/extract_data_for_selected_tab",
+            "admin/data/update_sub_tab/extract_data_for_selected_tab",
             stage1_timer  # Pass the Timer object
         )
 
@@ -361,7 +361,7 @@ def update_sub_tab(tab, store_demographics):
         with ect.Timer(verbose=False) as stage2_timer:
             df = pd.DataFrame(data)
         esdsq.store_dashboard_time(
-            "data/update_sub_tab/create_dataframe",
+            "admin/data/update_sub_tab/create_dataframe",
             stage2_timer  # Pass the Timer object
         )
 
@@ -370,7 +370,7 @@ def update_sub_tab(tab, store_demographics):
             if df.empty:
                 return None
         esdsq.store_dashboard_time(
-            "data/update_sub_tab/check_if_dataframe_empty",
+            "admin/data/update_sub_tab/check_if_dataframe_empty",
             stage3_timer  # Pass the Timer object
         )
 
@@ -378,7 +378,7 @@ def update_sub_tab(tab, store_demographics):
         with ect.Timer(verbose=False) as stage4_timer:
             df = df.drop(columns=[col for col in df.columns if col not in columns])
         esdsq.store_dashboard_time(
-            "data/update_sub_tab/drop_unnecessary_columns",
+            "admin/data/update_sub_tab/drop_unnecessary_columns",
             stage4_timer  # Pass the Timer object
         )
 
@@ -386,12 +386,12 @@ def update_sub_tab(tab, store_demographics):
         with ect.Timer(verbose=False) as stage5_timer:
             table = populate_datatable(df)
         esdsq.store_dashboard_time(
-            "data/update_sub_tab/populate_datatable",
+            "admin/data/update_sub_tab/populate_datatable",
             stage5_timer  # Pass the Timer object
         )
 
     esdsq.store_dashboard_time(
-        "data/update_sub_tab/total_time",
+        "admin/data/update_sub_tab/total_time",
         total_timer  # Pass the Timer object
     )
 
@@ -424,12 +424,12 @@ def update_dropdowns_trips(n_clicks, button_label):
                 hidden_col = ["data.duration", "data.distance_miles", "data.distance_km", "data.distance"]
                 button_label = 'Display columns with humanized units'
         esdsq.store_dashboard_time(
-            "data/update_dropdowns_trips/determine_hidden_columns_and_button_label",
+            "admin/data/update_dropdowns_trips/determine_hidden_columns_and_button_label",
             stage1_timer  # Pass the Timer object
         )
 
     esdsq.store_dashboard_time(
-        "data/update_dropdowns_trips/total_time",
+        "admin/data/update_dropdowns_trips/total_time",
         total_timer  # Pass the Timer object
     )
 
@@ -450,7 +450,7 @@ def populate_datatable(df, table_id=''):
             if not isinstance(df, pd.DataFrame):
                 raise PreventUpdate
         esdsq.store_dashboard_time(
-            "data/populate_datatable/validate_dataframe",
+            "admin/data/populate_datatable/validate_dataframe",
             stage1_timer  # Pass the Timer object
         )
 
@@ -473,12 +473,12 @@ def populate_datatable(df, table_id=''):
                 css=[{"selector": ".show-hide", "rule": "display:none"}]
             )
         esdsq.store_dashboard_time(
-            "data/populate_datatable/create_datatable",
+            "admin/data/populate_datatable/create_datatable",
             stage2_timer  # Pass the Timer object
         )
 
     esdsq.store_dashboard_time(
-        "data/populate_datatable/total_time",
+        "admin/data/populate_datatable/total_time",
         total_timer  # Pass the Timer object
     )
 
