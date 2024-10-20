@@ -12,268 +12,467 @@ import emission.storage.timeseries.timequery as estt
 import emission.core.wrapper.motionactivity as ecwm
 import emission.storage.timeseries.geoquery as estg
 import emission.storage.decorations.section_queries as esds
+import emission.core.timer as ect
+import emission.storage.decorations.stats_queries as esdsq
 
 from utils import constants
 from utils import permissions as perm_utils
 from utils.datetime_utils import iso_range_to_ts_range
-from functools import lru_cache
 
 def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude=None):
-    start_time = time.time()
-    # Check if df is a valid DataFrame and if it is empty
+    """
+    Filters a DataFrame based on specified column and exclusion values, then converts it to a list of records.
+
+    :param df (pd.DataFrame): The DataFrame to filter.
+    :param col_to_filter (str, optional): The column name to apply the filter on.
+    :param vals_to_exclude (list[str], optional): List of values to exclude from the filter.
+    :return: List of dictionaries representing the filtered records.
+    """
+    # Stage 1: Validate DataFrame and Set Defaults
+    with ect.Timer() as stage1_timer:
+        # Check if df is a valid DataFrame and if it is empty
+        if not isinstance(df, pd.DataFrame) or len(df) == 0:
+            # Exiting the context to set 'elapsed_ms'
+            pass  # Do nothing here; handle after the 'with' block
+        else:
+            # Default to an empty list if vals_to_exclude is None
+            if vals_to_exclude is None:
+                vals_to_exclude = []
+    # Store stage1 timing after exiting the 'with' block
     if not isinstance(df, pd.DataFrame) or len(df) == 0:
+        esdsq.store_dashboard_time(
+            "admin/db_utils/df_to_filtered_records/validate_dataframe_and_set_defaults",
+            stage1_timer
+        )
         return []
+    else:
+        esdsq.store_dashboard_time(
+            "admin/db_utils/df_to_filtered_records/validate_dataframe_and_set_defaults",
+            stage1_timer
+        )
     
-    # Default to an empty list if vals_to_exclude is None
-    if vals_to_exclude is None:
-        vals_to_exclude = []
+    # Stage 2: Perform Filtering
+    with ect.Timer() as stage2_timer:
+        # Perform filtering if col_to_filter and vals_to_exclude are provided
+        if col_to_filter and vals_to_exclude:
+            # Ensure vals_to_exclude is a list of strings
+            if not isinstance(vals_to_exclude, list) or not all(isinstance(val, str) for val in vals_to_exclude):
+                raise ValueError("vals_to_exclude must be a list of strings.")
+            df = df[~df[col_to_filter].isin(vals_to_exclude)]
+    # Store stage2 timing after exiting the 'with' block
+    esdsq.store_dashboard_time(
+        "admin/db_utils/df_to_filtered_records/perform_filtering",
+        stage2_timer
+    )
     
-    # Perform filtering if col_to_filter and vals_to_exclude are provided
-    if col_to_filter and vals_to_exclude:
-        # Ensure vals_to_exclude is a list of strings
-        if not isinstance(vals_to_exclude, list) or not all(isinstance(val, str) for val in vals_to_exclude):
-            raise ValueError("vals_to_exclude must be a list of strings.")
-        df = df[~df[col_to_filter].isin(vals_to_exclude)]
+    # Store total timing
+    with ect.Timer() as total_timer:
+        pass  # No operations here; 'elapsed_ms' will capture the time from start to now
+    esdsq.store_dashboard_time(
+        "admin/db_utils/df_to_filtered_records/total_time",
+        total_timer
+    )
     
-    # Return the filtered DataFrame as a list of dictionaries
-    end_time = time.time()  # End timing
-    execution_time = end_time - start_time
-    logging.debug(f'Time taken to df_to_filtered: {execution_time:.4f} seconds')
     return df.to_dict("records")
 
 
+
 def query_uuids(start_date: str, end_date: str, tz: str):
-    # As of now, time filtering does not apply to UUIDs; we just query all of them.
-    # Vestigial code commented out and left below for future reference
+    """
+    Queries UUIDs from the database within a specified date range and timezone.
 
-    # logging.debug("Querying the UUID DB for %s -> %s" % (start_date,end_date))
-    # query = {'update_ts': {'$exists': True}}
-    # if start_date is not None:
-    #     # have arrow create a datetime using start_date and time 00:00:00 in UTC
-    #     start_time = arrow.get(start_date).datetime
-    #     query['update_ts']['$gte'] = start_time
-    # if end_date is not None:
-    #     # have arrow create a datetime using end_date and time 23:59:59 in UTC
-    #     end_time = arrow.get(end_date).replace(hour=23, minute=59, second=59).datetime
-    #     query['update_ts']['$lt'] = end_time
-    # projection = {
-    #     '_id': 0,
-    #     'user_id': '$uuid',
-    #     'user_token': '$user_email',
-    #     'update_ts': 1
-    # }
+    :param start_date (str): Start date in ISO format.
+    :param end_date (str): End date in ISO format.
+    :param tz (str): Timezone string.
+    :return: Processed pandas DataFrame of UUIDs.
+    """
+    with ect.Timer() as total_timer:
+        # Stage 1: Log Debug Message
+        with ect.Timer() as stage1_timer:
+            logging.debug("Querying the UUID DB for (no date range)")
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_uuids/log_debug_message",
+            stage1_timer
+        )
 
-    logging.debug("Querying the UUID DB for (no date range)")
-
-    # This should actually use the profile DB instead of (or in addition to)
-    # the UUID DB so that we can see the app version, os, manufacturer...
-    # I will write a couple of functions to get all the users in a time range
-    # (although we should define what that time range should be) and to merge
-    # that with the profile data
-    start_time = time.time()
-    entries = edb.get_uuid_db().find()
-    df = pd.json_normalize(list(entries))
-    if not df.empty:
-        df['update_ts'] = pd.to_datetime(df['update_ts'])
-        df['user_id'] = df['uuid'].apply(str)
-        df['user_token'] = df['user_email']
-        df.drop(columns=["uuid", "_id"], inplace=True)
-    end_time = time.time()  # End timing
-    execution_time = end_time - start_time
-    logging.debug(f'Time taken for Query_UUIDs: {execution_time:.4f} seconds')
+        # Stage 2: Fetch Aggregate Time Series
+        with ect.Timer() as stage2_timer:
+            # This should actually use the profile DB instead of (or in addition to)
+            # the UUID DB so that we can see the app version, os, manufacturer...
+            # I will write a couple of functions to get all the users in a time range
+            # (although we should define what that time range should be) and to merge
+            # that with the profile data
+            entries = edb.get_uuid_db().find()
+            df = pd.json_normalize(list(entries))
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_uuids/fetch_aggregate_time_series",
+            stage2_timer
+        )
+        
+        # Stage 3: Process DataFrame
+        with ect.Timer() as stage3_timer:
+            if not df.empty:
+                df['update_ts'] = pd.to_datetime(df['update_ts'])
+                df['user_id'] = df['uuid'].apply(str)
+                df['user_token'] = df['user_email']
+                df.drop(columns=["uuid", "_id"], inplace=True)
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_uuids/process_dataframe",
+            stage3_timer
+        )
+    
+    esdsq.store_dashboard_time(
+        "admin/db_utils/query_uuids/total_time",
+        total_timer
+    )
+    
     return df
 
 def query_confirmed_trips(start_date: str, end_date: str, tz: str):
-    start_time = time.time()
-    (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
-    ts = esta.TimeSeries.get_aggregate_time_series()
-    # Note to self, allow end_ts to also be null in the timequery
-    # we can then remove the start_time, end_time logic
-    df = ts.get_data_df("analysis/confirmed_trip",
-        time_query=estt.TimeQuery("data.start_ts", start_ts, end_ts),
-    )
-    user_input_cols = []
+    """
+    Queries confirmed trips within a specified date range and timezone.
 
-    logging.debug("Before filtering, df columns are %s" % df.columns)
-    if not df.empty:
-        # Since we use `get_data_df` instead of `pd.json_normalize`,
-        # we lose the "data" prefix on the fields and they are only flattened one level
-        # Here, we restore the prefix for the VALID_TRIP_COLS from constants.py
-        # for backwards compatibility. We do this for all columns since columns which don't exist are ignored by the rename command.
-        rename_cols = constants.VALID_TRIP_COLS
-        # the mapping is `{distance: data.distance, duration: data.duration} etc
-        rename_mapping = dict(zip([c.replace("data.", "") for c in rename_cols], rename_cols))
-        logging.debug("Rename mapping is %s" % rename_mapping)
-        df.rename(columns=rename_mapping, inplace=True)
-        logging.debug("After renaming columns, they are %s" % df.columns)
-
-        # Now copy over the coordinates
-        df['data.start_loc.coordinates'] = df['start_loc'].apply(lambda g: g["coordinates"])
-        df['data.end_loc.coordinates'] = df['end_loc'].apply(lambda g: g["coordinates"])
-
-        # Add primary modes from the sensed, inferred and ble summaries. Note that we do this
-        # **before** filtering the `all_trip_columns` because the
-        # *_section_summary columns are not currently valid
-        
-        # Check if 'md' is not a dictionary or does not contain the key 'distance'
-        # or if 'md["distance"]' is not a dictionary.
-        # If any of these conditions are true, return "INVALID".
-        get_max_mode_from_summary = lambda md: (
-            "INVALID"
-            if not isinstance(md, dict)
-            or "distance" not in md
-            or not isinstance(md["distance"], dict)
-            # If 'md' is a dictionary and 'distance' is a valid key pointing to a dictionary:
-            else (
-                # Get the maximum value from 'md["distance"]' using the values of 'md["distance"].get' as the key for 'max'.
-                # This operation only happens if the length of 'md["distance"]' is greater than 0.
-                # Otherwise, return "INVALID".
-                max(md["distance"], key=md["distance"].get)
-                if len(md["distance"]) > 0
-                else "INVALID"
-            )
+    :param start_date (str): Start date in ISO format.
+    :param end_date (str): End date in ISO format.
+    :param tz (str): Timezone string.
+    :return: Tuple containing the processed DataFrame and list of user input columns.
+    """
+    with ect.Timer() as total_timer:
+        # Stage 1: Convert Date Range to Timestamps
+        with ect.Timer() as stage1_timer:
+            (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_confirmed_trips/convert_date_range_to_timestamps",
+            stage1_timer
         )
+        
+        # Stage 2: Fetch Aggregate Time Series
+        with ect.Timer() as stage2_timer:
+            ts = esta.TimeSeries.get_aggregate_time_series()
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_confirmed_trips/fetch_aggregate_time_series",
+            stage2_timer
+        )
+        
+        # Stage 3: Fetch Confirmed Trip Entries
+        with ect.Timer() as stage3_timer:
+            # Note to self, allow end_ts to also be null in the timequery
+            # we can then remove the start_time, end_time logic
+            df = ts.get_data_df("analysis/confirmed_trip",
+                time_query=estt.TimeQuery("data.start_ts", start_ts, end_ts),
+            )
+            user_input_cols = []
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_confirmed_trips/fetch_confirmed_trip_entries",
+            stage3_timer
+        )
+        
+        if not df.empty:
+            # Stage 4: Convert Object Columns to Strings
+            with ect.Timer() as stage4_timer:
+                for col in df.columns:
+                    if df[col].dtype == 'object':
+                        df[col] = df[col].apply(str)
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_confirmed_trips/convert_object_columns_to_strings",
+                stage4_timer
+            )
+            
+            # Stage 5: Drop Metadata Columns
+            with ect.Timer() as stage5_timer:
+                # Drop metadata columns
+                columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
+                df.drop(columns=columns_to_drop, inplace=True)
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_confirmed_trips/drop_metadata_columns",
+                stage5_timer
+            )
+            
+            # Stage 6: Drop or Modify Excluded Columns
+            with ect.Timer() as stage6_timer:
+                # Drop or modify excluded columns
+                for col in constants.EXCLUDED_TRAJECTORIES_COLS:
+                    if col in df.columns:
+                        df.drop(columns=[col], inplace=True)
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_confirmed_trips/drop_or_modify_excluded_columns",
+                stage6_timer
+            )
+            
+            # I dont think we even implemented this..
+            # need fix asap
+            # Stage 7: Handle 'background/location' Key
+            with ect.Timer() as stage7_timer:
+                # Check if 'background/location' is in the key_list
+                if 'background/location' in key_list:
+                    if 'data.mode' in df.columns:
+                        # Set the values in data.mode to blank ('')
+                        df['data.mode'] = ''
+                else:
+                    # Map mode to its corresponding string value
+                    df['data.mode_str'] = df['data.mode'].apply(
+                        lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
+                    )
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_confirmed_trips/handle_background_location_key",
+                stage7_timer
+            )
+            
+            # Stage 8: Clean and Modify DataFrames
+            with ect.Timer() as stage8_timer:
+                # Expand the user inputs
+                user_input_df = pd.json_normalize(df.user_input)
+                df = pd.concat([df, user_input_df], axis='columns')
+                user_input_cols = [
+                    c for c in user_input_df.columns
+                    if "metadata" not in c and
+                       "xmlns" not in c and
+                       "local_dt" not in c and
+                       'xmlResponse' not in c and
+                       "_id" not in c
+                ]
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_confirmed_trips/clean_and_modify_dataframes",
+                stage8_timer
+            )
+            
+            # Stage 9: Filter and Combine Columns
+            with ect.Timer() as stage9_timer:
+                combined_col_list = list(perm_utils.get_all_trip_columns()) + user_input_cols
+                columns = [col for col in combined_col_list if col in df.columns]
+                df = df[columns]
+                for col in constants.BINARY_TRIP_COLS:
+                    if col in df.columns:
+                        df[col] = df[col].apply(str)
+                for named_col in perm_utils.get_all_named_trip_columns():
+                    if named_col['path'] in df.columns:
+                        df[named_col['label']] = df[named_col['path']]
+                        # df = df.drop(columns=[named_col['path']])
+                # TODO: We should really display both the humanized value and the raw value
+                # humanized value for people to see the entries in real time
+                # raw value to support analyses on the downloaded data
+                # I still don't fully grok which columns are displayed
+                # https://github.com/e-mission/op-admin-dashboard/issues/29#issuecomment-1530105040
+                # https://github.com/e-mission/op-admin-dashboard/issues/29#issuecomment-1530439811
+                # so just replacing the distance and duration with the humanized values for now
+                df['data.distance_meters'] = df['data.distance']
+                use_imperial = perm_utils.config.get("display_config",
+                    {"use_imperial": False}).get("use_imperial", False)
+                # convert to km to humanize
+                df['data.distance_km'] = df['data.distance'] / 1000
+                # convert km further to miles because this is the US, Liberia or Myanmar
+                # https://en.wikipedia.org/wiki/Mile
+                df['data.duration_seconds'] = df['data.duration']
+                if use_imperial:
+                    df['data.distance_miles'] = df['data.distance_km'] * 0.6213712
 
-        df["data.primary_sensed_mode"] = df.cleaned_section_summary.apply(get_max_mode_from_summary)
-        df["data.primary_predicted_mode"] = df.inferred_section_summary.apply(get_max_mode_from_summary)
-        if 'ble_sensed_summary' in df.columns:
-            df["data.primary_ble_sensed_mode"] = df.ble_sensed_summary.apply(get_max_mode_from_summary)
-        else:
-            logging.debug("No BLE support found, not fleet version, ignoring...")
-
-        # Expand the user inputs
-        user_input_df = pd.json_normalize(df.user_input)
-        df = pd.concat([df, user_input_df], axis='columns')
-        logging.debug(f"Before filtering {user_input_df.columns=}")
-        user_input_cols = [c for c in user_input_df.columns
-            if "metadata" not in c and
-               "xmlns" not in c and
-               "local_dt" not in c and
-               'xmlResponse' not in c and
-               "_id" not in c]
-        logging.debug(f"After filtering {user_input_cols=}")
-
-        combined_col_list = list(perm_utils.get_all_trip_columns()) + user_input_cols
-        logging.debug(f"Combined list {combined_col_list=}")
-        columns = [col for col in combined_col_list if col in df.columns]
-        df = df[columns]
-        logging.debug(f"After filtering against the combined list {df.columns=}")
-        # logging.debug("After getting all columns, they are %s" % df.columns)
-        for col in constants.BINARY_TRIP_COLS:
-            if col in df.columns:
-                df[col] = df[col].apply(str)
-        for named_col in perm_utils.get_all_named_trip_columns():
-            if named_col['path'] in df.columns:
-                df[named_col['label']] = df[named_col['path']]
-                # df = df.drop(columns=[named_col['path']])
-        # TODO: We should really display both the humanized value and the raw value
-        # humanized value for people to see the entries in real time
-        # raw value to support analyses on the downloaded data
-        # I still don't fully grok which columns are displayed
-        # https://github.com/e-mission/op-admin-dashboard/issues/29#issuecomment-1530105040
-        # https://github.com/e-mission/op-admin-dashboard/issues/29#issuecomment-1530439811
-        # so just replacing the distance and duration with the humanized values for now
-        df['data.distance_meters'] = df['data.distance']
-        use_imperial = perm_utils.config.get("display_config",
-            {"use_imperial": False}).get("use_imperial", False)
-        # convert to km to humanize
-        df['data.distance_km'] = df['data.distance'] / 1000
-        # convert km further to miles because this is the US, Liberia or Myanmar
-        # https://en.wikipedia.org/wiki/Mile
-        df['data.duration_seconds'] = df['data.duration']
-        if use_imperial:
-            df['data.distance_miles'] = df['data.distance_km'] * 0.6213712
-
-        df['data.duration'] = df['data.duration'].apply(lambda d: arrow.utcnow().shift(seconds=d).humanize(only_distance=True))
-
-    # logging.debug("After filtering, df columns are %s" % df.columns)
-    # logging.debug("After filtering, the actual data is %s" % df.head())
-    # logging.debug("After filtering, the actual data is %s" % df.head().trip_start_time_str)
-    end_time = time.time()  # End timing
-    execution_time = end_time - start_time
-    logging.debug(f'Time taken for Query_Confirmed_Trips: {execution_time:.4f} seconds')
+                df['data.duration'] = df['data.duration'].apply(lambda d: arrow.utcnow().shift(seconds=d).humanize(only_distance=True))
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_confirmed_trips/filter_and_combine_columns",
+                stage9_timer
+            )
+        
+    esdsq.store_dashboard_time(
+        "admin/db_utils/query_confirmed_trips/total_time",
+        total_timer
+    )
     return (df, user_input_cols)
 
 def query_demographics():
-    start_time = time.time()
-    # Returns dictionary of df where key represent differnt survey id and values are df for each survey
-    logging.debug("Querying the demographics for (no date range)")
-    ts = esta.TimeSeries.get_aggregate_time_series()
+    """
+    Queries demographic survey data and organizes it into a dictionary of DataFrames.
+    Each key in the dictionary represents a different survey ID, and the corresponding
+    value is a DataFrame containing the survey responses.
 
-    entries = ts.find_entries(["manual/demographic_survey"])
-    data = list(entries)
+    :return: Dictionary where keys are survey IDs and values are corresponding DataFrames.
+    """
+    with ect.Timer() as total_timer:
+        # Stage 1: Log Debug Message
+        with ect.Timer() as stage1_timer:
+            # Returns dictionary of df where key represent different survey id and values are df for each survey
+            logging.debug("Querying the demographics for (no date range)")
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_demographics/log_debug_message",
+            stage1_timer
+        )
 
-    available_key = {}
-    for entry in data:
-        survey_key = list(entry['data']['jsonDocResponse'].keys())[0]
-        if survey_key not in available_key:
-            available_key[survey_key] = []
-        available_key[survey_key].append(entry)
+        # Stage 2: Fetch Aggregate Time Series
+        with ect.Timer() as stage2_timer:
+            ts = esta.TimeSeries.get_aggregate_time_series()
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_demographics/fetch_aggregate_time_series",
+            stage2_timer
+        )
 
-    dataframes = {}
-    for key, json_object in available_key.items():
-        df = pd.json_normalize(json_object)
-        dataframes[key] = df
+        # Stage 3: Find Demographic Survey Entries
+        with ect.Timer() as stage3_timer:
+            entries = ts.find_entries(["manual/demographic_survey"])
+            data = list(entries)
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_demographics/find_demographic_survey_entries",
+            stage3_timer
+        )
 
-    for key, df in dataframes.items():
-        if not df.empty:
-            for col in constants.BINARY_DEMOGRAPHICS_COLS:
-                if col in df.columns:
-                    df[col] = df[col].apply(str) 
-            columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
-            df.drop(columns= columns_to_drop, inplace=True) 
-            modified_columns = perm_utils.get_demographic_columns(df.columns)  
-            df.columns = modified_columns 
-            df.columns=[col.rsplit('.',1)[-1] if col.startswith('data.jsonDocResponse.') else col for col in df.columns]  
-            for col in constants.EXCLUDED_DEMOGRAPHICS_COLS:
-                if col in df.columns:
-                    df.drop(columns= [col], inplace=True) 
-    
-    end_time = time.time()  # End timing
-    execution_time = end_time - start_time
-    logging.debug(f'Time taken for Query Demographic: {execution_time:.4f} seconds')
+        # Stage 4: Organize Entries by Survey Key
+        with ect.Timer() as stage4_timer:
+            available_key = {}
+            for entry in data:
+                survey_key = list(entry['data']['jsonDocResponse'].keys())[0]
+                if survey_key not in available_key:
+                    available_key[survey_key] = []
+                available_key[survey_key].append(entry)
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_demographics/organize_entries_by_survey_key",
+            stage4_timer
+        )
+
+        # Stage 5: Create DataFrames from Organized Entries
+        with ect.Timer() as stage5_timer:
+            dataframes = {}
+            for key, json_object in available_key.items():
+                df = pd.json_normalize(json_object)
+                dataframes[key] = df
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_demographics/create_dataframes_from_organized_entries",
+            stage5_timer
+        )
+
+        # Stage 6: Clean and Modify DataFrames
+        with ect.Timer() as stage6_timer:
+            for key, df in dataframes.items():
+                if not df.empty:
+                    # Convert binary demographic columns to strings
+                    for col in constants.BINARY_DEMOGRAPHICS_COLS:
+                        if col in df.columns:
+                            df[col] = df[col].apply(str)
+
+                    # Drop metadata columns
+                    columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
+                    df.drop(columns=columns_to_drop, inplace=True)
+
+                    # Modify column names
+                    modified_columns = perm_utils.get_demographic_columns(df.columns)
+                    df.columns = modified_columns
+
+                    # Simplify column names by removing prefixes
+                    df.columns = [
+                        col.rsplit('.', 1)[-1] if col.startswith('data.jsonDocResponse.') else col
+                        for col in df.columns
+                    ]
+
+                    # Drop excluded demographic columns
+                    for col in constants.EXCLUDED_DEMOGRAPHICS_COLS:
+                        if col in df.columns:
+                            df.drop(columns=[col], inplace=True)
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_demographics/clean_and_modify_dataframes",
+            stage6_timer
+        )
+
+    esdsq.store_dashboard_time(
+        "admin/db_utils/query_demographics/total_time",
+        total_timer
+    )
+
     return dataframes
 
-def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
-    (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
-    ts = esta.TimeSeries.get_aggregate_time_series()
-
-    # Check if key_list contains 'background/location'
-    key_list = [key_list]
-    entries = ts.find_entries(
-        key_list=key_list,
-        time_query=estt.TimeQuery("data.ts", start_ts, end_ts),
-    )
-    df = pd.json_normalize(list(entries))
-
-    if not df.empty:
-        for col in df.columns:
-            if df[col].dtype == 'object':
-                df[col] = df[col].apply(str)
-
-        # Drop metadata columns
-        columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
-        df.drop(columns=columns_to_drop, inplace=True)
-
-        # Drop or modify excluded columns
-        for col in constants.EXCLUDED_TRAJECTORIES_COLS:
-            if col in df.columns:
-                df.drop(columns=[col], inplace=True)
-
-        # Check if 'background/location' is in the key_list
-        if 'background/location' in key_list:
-            if 'data.mode' in df.columns:
-                # Set the values in data.mode to blank ('')
-                df['data.mode'] = ''
-        else:
-            # Map mode to its corresponding string value
-            df['data.mode_str'] = df['data.mode'].apply(
-                lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
+def query_trajectories(start_date: str, end_date: str, tz: str, key_list: list[str]):
+    """
+    Queries trajectories within a specified date range and timezone based on provided key list.
+    
+    :param start_date (str): Start date in ISO format.
+    :param end_date (str): End date in ISO format.
+    :param tz (str): Timezone string.
+    :param key_list (list[str]): List of keys to query.
+    :return: Processed pandas DataFrame of trajectories.
+    """
+    with ect.Timer() as total_timer:
+        # Stage 1: Convert Date Range to Timestamps
+        with ect.Timer() as stage1_timer:
+            (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_trajectories/convert_date_range_to_timestamps",
+            stage1_timer
+        )
+        
+        # Stage 2: Fetch Aggregate Time Series
+        with ect.Timer() as stage2_timer:
+            ts = esta.TimeSeries.get_aggregate_time_series()
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_trajectories/fetch_aggregate_time_series",
+            stage2_timer
+        )
+        
+        # Stage 3: Fetch Trajectory Entries
+        with ect.Timer() as stage3_timer:
+            # Check if key_list contains 'background/location'
+            key_list = [key_list]
+            entries = ts.find_entries(
+                key_list=key_list,
+                time_query=estt.TimeQuery("data.ts", start_ts, end_ts),
             )
-
+            df = pd.json_normalize(list(entries))
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_trajectories/fetch_trajectory_entries",
+            stage3_timer
+        )
+        
+        if not df.empty:
+            # Stage 4: Convert Object Columns to Strings
+            with ect.Timer() as stage4_timer:
+                for col in df.columns:
+                    if df[col].dtype == 'object':
+                        df[col] = df[col].apply(str)
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_trajectories/convert_object_columns_to_strings",
+                stage4_timer
+            )
+            
+            # Stage 5: Drop Metadata Columns
+            with ect.Timer() as stage5_timer:
+                # Drop metadata columns
+                columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
+                df.drop(columns=columns_to_drop, inplace=True)
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_trajectories/drop_metadata_columns",
+                stage5_timer
+            )
+            
+            # Stage 6: Drop or Modify Excluded Columns
+            with ect.Timer() as stage6_timer:
+                # Drop or modify excluded columns
+                for col in constants.EXCLUDED_TRAJECTORIES_COLS:
+                    if col in df.columns:
+                        df.drop(columns=[col], inplace=True)
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_trajectories/drop_or_modify_excluded_columns",
+                stage6_timer
+            )
+            
+            # Stage 7: Handle 'background/location' Key
+            with ect.Timer() as stage7_timer:
+                # Check if 'background/location' is in the key_list
+                if 'background/location' in key_list:
+                    if 'data.mode' in df.columns:
+                        # Set the values in data.mode to blank ('')
+                        df['data.mode'] = ''
+                else:
+                    # Map mode to its corresponding string value
+                    df['data.mode_str'] = df['data.mode'].apply(
+                        lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
+                    )
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_trajectories/handle_background_location_key",
+                stage7_timer
+            )
+        
+    esdsq.store_dashboard_time(
+        "admin/db_utils/query_trajectories/total_time",
+        total_timer
+    )
     return df
 
-
+# unchanged for now -- since reverting
 def add_user_stats(user_data, batch_size=5):
     start_time = time.time()
     time_format = 'YYYY-MM-DD HH:mm:ss'
@@ -356,45 +555,142 @@ def add_user_stats(user_data, batch_size=5):
 
     return processed_data
 
-def query_segments_crossing_endpoints(poly_region_start, poly_region_end, start_date: str, end_date: str, tz: str, excluded_uuids: list[str]):
-    (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
-    tq = estt.TimeQuery("data.ts", start_ts, end_ts)
-    not_excluded_uuid_query = {'user_id': {'$nin': [UUID(uuid) for uuid in excluded_uuids]}}
-    agg_ts = estag.AggregateTimeSeries().get_aggregate_time_series()
+def query_segments_crossing_endpoints(
+    poly_region_start,
+    poly_region_end,
+    start_date: str,
+    end_date: str,
+    tz: str,
+    excluded_uuids: list[str]
+):
+    """
+    Queries segments that cross specified start and end polygon regions within a given date range,
+    excluding specified user UUIDs. Returns a DataFrame of filtered segments that meet the criteria.
 
-    locs_matching_start = agg_ts.get_data_df(
-                              "analysis/recreated_location",
-                              geo_query = estg.GeoQuery(['data.loc'], poly_region_start),
-                              time_query = tq,
-                              extra_query_list=[not_excluded_uuid_query]
-                          )
-    locs_matching_start = locs_matching_start.drop_duplicates(subset=['section'])
-    if locs_matching_start.empty:
-        return locs_matching_start
-    
-    locs_matching_end = agg_ts.get_data_df(
-                            "analysis/recreated_location",
-                            geo_query = estg.GeoQuery(['data.loc'], poly_region_end),
-                            time_query = tq,
-                            extra_query_list=[not_excluded_uuid_query]
-                        )
-    locs_matching_end = locs_matching_end.drop_duplicates(subset=['section'])
-    if locs_matching_end.empty:
-        return locs_matching_end
-    
-    merged = locs_matching_start.merge(locs_matching_end, how='outer', on=['section'])
-    filtered = merged.loc[merged['idx_x']<merged['idx_y']].copy()
-    filtered['duration'] = filtered['ts_y'] - filtered['ts_x']
-    filtered['mode'] = filtered['mode_x']
-    filtered['start_fmt_time'] = filtered['fmt_time_x']
-    filtered['end_fmt_time'] = filtered['fmt_time_y']
-    filtered['user_id'] = filtered['user_id_y']
-    
-    number_user_seen = filtered.user_id_x.nunique()
+    :param poly_region_start: Polygon defining the start region.
+    :param poly_region_end: Polygon defining the end region.
+    :param start_date (str): Start date in ISO format.
+    :param end_date (str): End date in ISO format.
+    :param tz (str): Timezone string.
+    :param excluded_uuids (list[str]): List of user UUIDs to exclude.
+    :return: Filtered pandas DataFrame of segments crossing the endpoints.
+    """
+    with ect.Timer() as total_timer:
+        # Stage 1: Convert Date Range to Timestamps
+        with ect.Timer() as stage1_timer:
+            start_ts, end_ts = iso_range_to_ts_range(start_date, end_date, tz)
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_segments_crossing_endpoints/convert_date_range_to_timestamps",
+            stage1_timer
+        )
+        
+        # Stage 2: Setup Time and User Exclusion Queries
+        with ect.Timer() as stage2_timer:
+            tq = estt.TimeQuery("data.ts", start_ts, end_ts)
+            not_excluded_uuid_query = {
+                'user_id': {'$nin': [UUID(uuid) for uuid in excluded_uuids]}
+            }
+            agg_ts = estag.AggregateTimeSeries().get_aggregate_time_series()
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_segments_crossing_endpoints/setup_time_and_user_exclusion_queries",
+            stage2_timer
+        )
 
-    if perm_utils.permissions.get("segment_trip_time_min_users", 0) <= number_user_seen:
-        return filtered
-    return pd.DataFrame.from_dict([])
+        # Stage 3: Fetch Locations Matching Start Region
+        with ect.Timer() as stage3_timer:
+            locs_matching_start = agg_ts.get_data_df(
+                "analysis/recreated_location",
+                geo_query=estg.GeoQuery(['data.loc'], poly_region_start),
+                time_query=tq,
+                extra_query_list=[not_excluded_uuid_query]
+            )
+            locs_matching_start = locs_matching_start.drop_duplicates(subset=['section'])
+            if locs_matching_start.empty:
+                esdsq.store_dashboard_time(
+                    "admin/db_utils/query_segments_crossing_endpoints/fetch_locations_matching_start_region",
+                    stage3_timer
+                )
+                esdsq.store_dashboard_time(
+                    "admin/db_utils/query_segments_crossing_endpoints/total_time",
+                    total_timer
+                )
+                return locs_matching_start
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_segments_crossing_endpoints/fetch_locations_matching_start_region",
+            stage3_timer
+        )
+
+        # Stage 4: Fetch Locations Matching End Region
+        with ect.Timer() as stage4_timer:
+            locs_matching_end = agg_ts.get_data_df(
+                "analysis/recreated_location",
+                geo_query=estg.GeoQuery(['data.loc'], poly_region_end),
+                time_query=tq,
+                extra_query_list=[not_excluded_uuid_query]
+            )
+            locs_matching_end = locs_matching_end.drop_duplicates(subset=['section'])
+            if locs_matching_end.empty:
+                esdsq.store_dashboard_time(
+                    "admin/db_utils/query_segments_crossing_endpoints/fetch_locations_matching_end_region",
+                    stage4_timer
+                )
+                esdsq.store_dashboard_time(
+                    "admin/db_utils/query_segments_crossing_endpoints/total_time",
+                    total_timer
+                )
+                return locs_matching_end
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_segments_crossing_endpoints/fetch_locations_matching_end_region",
+            stage4_timer
+        )
+
+        # Stage 5: Merge and Filter Segments
+        with ect.Timer() as stage5_timer:
+            merged = locs_matching_start.merge(
+                locs_matching_end, how='outer', on=['section']
+            )
+            filtered = merged.loc[merged['idx_x'] < merged['idx_y']].copy()
+            filtered['duration'] = filtered['ts_y'] - filtered['ts_x']
+            filtered['mode'] = filtered['mode_x']
+            filtered['start_fmt_time'] = filtered['fmt_time_x']
+            filtered['end_fmt_time'] = filtered['fmt_time_y']
+            filtered['user_id'] = filtered['user_id_y']
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_segments_crossing_endpoints/merge_and_filter_segments",
+            stage5_timer
+        )
+
+        # Stage 6: Evaluate User Count and Final Filtering
+        with ect.Timer() as stage6_timer:
+            number_user_seen = filtered.user_id_x.nunique()
+            min_users_required = perm_utils.permissions.get(
+                "segment_trip_time_min_users", 0
+            )
+            logging.debug(
+                f"Number of unique users seen: {number_user_seen} "
+                f"(Minimum required: {min_users_required})"
+            )
+            if number_user_seen >= min_users_required:
+                logging.info(
+                    f"Returning filtered segments with {number_user_seen} unique users."
+                )
+                result = filtered
+            else:
+                logging.info(
+                    f"Insufficient unique users ({number_user_seen}) to meet the "
+                    f"minimum requirement ({min_users_required}). Returning empty DataFrame."
+                )
+                result = pd.DataFrame.from_dict([])
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_segments_crossing_endpoints/evaluate_user_count_and_final_filtering",
+            stage6_timer
+        )
+
+    esdsq.store_dashboard_time(
+        "admin/db_utils/query_segments_crossing_endpoints/total_time",
+        total_timer
+    )
+    return result
 
 # The following query can be called multiple times, let's open db only once
 analysis_timeseries_db = edb.get_analysis_timeseries_db()
