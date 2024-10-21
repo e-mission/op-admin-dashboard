@@ -472,98 +472,88 @@ def query_trajectories(start_date: str, end_date: str, tz: str, key_list: list[s
     )
     return df
 
-def add_user_stats(user_data):
-    """
-    Adds statistical data to each user in the provided user_data list.
+# unchanged for now -- since reverting
+def add_user_stats(user_data, batch_size=5):
+    start_time = time.time()
+    time_format = 'YYYY-MM-DD HH:mm:ss'
 
-    For each user, it calculates total trips, labeled trips, and retrieves profile information.
-    Additionally, it records the timestamps of the first trip, last trip, and the last API call.
-
-    :param user_data (list[dict]): List of user dictionaries to be enriched with stats.
-    :return: The list of user dictionaries with added statistical data.
-    """
-    with ect.Timer(verbose=False) as total_timer:
-        logging.info("Adding user stats")
+    def process_user(user):
+        user_uuid = UUID(user['user_id'])
         
-        for user in user_data:
-            with ect.Timer(verbose=False) as stage_timer:
-                try:
-                    logging.debug(f"Processing user {user['user_id']}")
-                    user_uuid = UUID(user['user_id'])
+        # Fetch aggregated data for all users once and cache it
+        ts_aggregate = esta.TimeSeries.get_aggregate_time_series()
 
-                    # Stage 1: Calculate Total Trips
-                    total_trips = esta.TimeSeries.get_aggregate_time_series().find_entries_count(
-                        key_list=["analysis/confirmed_trip"],
-                        extra_query_list=[{'user_id': user_uuid}]
-                    )
-                    user['total_trips'] = total_trips
-
-                    # Stage 2: Calculate Labeled Trips
-                    labeled_trips = esta.TimeSeries.get_aggregate_time_series().find_entries_count(
-                        key_list=["analysis/confirmed_trip"],
-                        extra_query_list=[{'user_id': user_uuid}, {'data.user_input': {'$ne': {}}}]
-                    )
-                    user['labeled_trips'] = labeled_trips
-
-                    # Stage 3: Retrieve Profile Data
-                    profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
-                    user['platform'] = profile_data.get('curr_platform')
-                    user['manufacturer'] = profile_data.get('manufacturer')
-                    user['app_version'] = profile_data.get('client_app_version')
-                    user['os_version'] = profile_data.get('client_os_version')
-                    user['phone_lang'] = profile_data.get('phone_lang')
-
-                    if total_trips > 0:
-                        time_format = 'YYYY-MM-DD HH:mm:ss'
-                        ts = esta.TimeSeries.get_time_series(user_uuid)
-                        
-                        # Stage 4: Get First Trip Timestamp
-                        start_ts = ts.get_first_value_for_field(
-                            key='analysis/confirmed_trip',
-                            field='data.end_ts',
-                            sort_order=pymongo.ASCENDING
-                        )
-                        if start_ts != -1:
-                            user['first_trip'] = arrow.get(start_ts).format(time_format)
-
-                        # Stage 5: Get Last Trip Timestamp
-                        end_ts = ts.get_first_value_for_field(
-                            key='analysis/confirmed_trip',
-                            field='data.end_ts',
-                            sort_order=pymongo.DESCENDING
-                        )
-                        if end_ts != -1:
-                            user['last_trip'] = arrow.get(end_ts).format(time_format)
-
-                        # Stage 6: Get Last API Call Timestamp
-                        last_call = ts.get_first_value_for_field(
-                            key='stats/server_api_time',
-                            field='data.ts',
-                            sort_order=pymongo.DESCENDING
-                        )
-                        if last_call != -1:
-                            user['last_call'] = arrow.get(last_call).format(time_format)
-
-                except Exception as e:
-                    logging.exception(f"An error occurred while processing user {user.get('user_id', 'Unknown')}: {e}")
-                finally:
-                    # Store timing for processing each user
-                    # I'm hesistant to store this because it will be a lot of data
-                    # esdsq.store_dashboard_time(
-                    #     f"admin/db_utils/add_user_stats/process_user_{user['user_id']}",
-                    #     stage_timer  # Pass the Timer object
-                    # )
-                    pass
+        # Fetch data for the user, cached for repeated queries
+        profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
         
-        logging.info("Finished adding user stats")
-    
-    # Store total timing for the entire function
-    esdsq.store_dashboard_time(
-        "admin/db_utils/add_user_stats/total_time",
-        total_timer  # Pass the Timer object
-    )
-    
-    return user_data
+        total_trips = ts_aggregate.find_entries_count(
+            key_list=["analysis/confirmed_trip"],
+            extra_query_list=[{'user_id': user_uuid}]
+        )
+        labeled_trips = ts_aggregate.find_entries_count(
+            key_list=["analysis/confirmed_trip"],
+            extra_query_list=[{'user_id': user_uuid}, {'data.user_input': {'$ne': {}}}]
+        )
+        
+        user['total_trips'] = total_trips
+        user['labeled_trips'] = labeled_trips
+
+        if profile_data:
+            user['platform'] = profile_data.get('curr_platform')
+            user['manufacturer'] = profile_data.get('manufacturer')
+            user['app_version'] = profile_data.get('client_app_version')
+            user['os_version'] = profile_data.get('client_os_version')
+            user['phone_lang'] = profile_data.get('phone_lang')
+
+        if total_trips > 0:
+            ts = esta.TimeSeries.get_time_series(user_uuid)
+            first_trip_ts = ts.get_first_value_for_field(
+                key='analysis/confirmed_trip',
+                field='data.end_ts',
+                sort_order=pymongo.ASCENDING
+            )
+            if first_trip_ts != -1:
+                user['first_trip'] = arrow.get(first_trip_ts).format(time_format)
+
+            last_trip_ts = ts.get_first_value_for_field(
+                key='analysis/confirmed_trip',
+                field='data.end_ts',
+                sort_order=pymongo.DESCENDING
+            )
+            if last_trip_ts != -1:
+                user['last_trip'] = arrow.get(last_trip_ts).format(time_format)
+
+            last_call_ts = ts.get_first_value_for_field(
+                key='stats/server_api_time',
+                field='data.ts',
+                sort_order=pymongo.DESCENDING
+            )
+            if last_call_ts != -1:
+                user['last_call'] = arrow.get(last_call_ts).format(time_format)
+        
+        return user
+
+    def batch_process(users_batch):
+        with ThreadPoolExecutor() as executor:  # Adjust max_workers based on CPU cores
+            futures = [executor.submit(process_user, user) for user in users_batch]
+            processed_batch = [future.result() for future in as_completed(futures)]
+        return processed_batch
+
+    total_users = len(user_data)
+    processed_data = []
+
+    for i in range(0, total_users, batch_size):
+        batch = user_data[i:i + batch_size]
+        processed_batch = batch_process(batch)
+        processed_data.extend(processed_batch)
+
+        logging.debug(f'Processed {len(processed_data)} users out of {total_users}')
+
+    end_time = time.time()  # End timing
+    execution_time = end_time - start_time
+    logging.debug(f'Time taken to add_user_stats: {execution_time:.4f} seconds')
+
+    return processed_data
 
 def query_segments_crossing_endpoints(
     poly_region_start,
