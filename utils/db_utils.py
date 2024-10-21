@@ -131,123 +131,153 @@ def query_uuids(start_date: str, end_date: str, tz: str):
 def query_confirmed_trips(start_date: str, end_date: str, tz: str):
     """
     Queries confirmed trips within a specified date range and timezone.
-
+    
     :param start_date (str): Start date in ISO format.
     :param end_date (str): End date in ISO format.
     :param tz (str): Timezone string.
-    :return: Tuple containing the processed DataFrame and list of user input columns.
+    :return: Tuple containing the DataFrame of confirmed trips and list of user input columns.
     """
     with ect.Timer() as total_timer:
         # Stage 1: Convert Date Range to Timestamps
         with ect.Timer() as stage1_timer:
-            (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
+            start_ts, end_ts = iso_range_to_ts_range(start_date, end_date, tz)
         esdsq.store_dashboard_time(
             "admin/db_utils/query_confirmed_trips/convert_date_range_to_timestamps",
             stage1_timer
         )
         
-        # Stage 2: Fetch Aggregate Time Series
+        # Stage 2: Fetch Aggregate Time Series Data
         with ect.Timer() as stage2_timer:
             ts = esta.TimeSeries.get_aggregate_time_series()
+            df = ts.get_data_df(
+                "analysis/confirmed_trip",
+                time_query=estt.TimeQuery("data.start_ts", start_ts, end_ts),
+            )
         esdsq.store_dashboard_time(
-            "admin/db_utils/query_confirmed_trips/fetch_aggregate_time_series",
+            "admin/db_utils/query_confirmed_trips/fetch_aggregate_time_series_data",
             stage2_timer
         )
         
-        # Stage 3: Fetch Confirmed Trip Entries
-        with ect.Timer() as stage3_timer:
-            # Note to self, allow end_ts to also be null in the timequery
-            # we can then remove the start_time, end_time logic
-            df = ts.get_data_df("analysis/confirmed_trip",
-                time_query=estt.TimeQuery("data.start_ts", start_ts, end_ts),
-            )
-            user_input_cols = []
-        esdsq.store_dashboard_time(
-            "admin/db_utils/query_confirmed_trips/fetch_confirmed_trip_entries",
-            stage3_timer
-        )
-        
+        user_input_cols = []
+    
+        logging.debug("Before filtering, df columns are %s" % df.columns)
         if not df.empty:
-            # Stage 4: Convert Object Columns to Strings
-            with ect.Timer() as stage4_timer:
-                for col in df.columns:
-                    if df[col].dtype == 'object':
-                        df[col] = df[col].apply(str)
+            # Stage 3: Rename Columns for Backwards Compatibility
+            with ect.Timer() as stage3_timer:
+                # Since we use `get_data_df` instead of `pd.json_normalize`,
+                # we lose the "data" prefix on the fields and they are only flattened one level
+                # Here, we restore the prefix for the VALID_TRIP_COLS from constants.py
+                # for backwards compatibility. We do this for all columns since columns which don't exist are ignored by the rename command.
+                rename_cols = constants.VALID_TRIP_COLS
+                # the mapping is `{distance: data.distance, duration: data.duration} etc
+                rename_mapping = dict(zip([c.replace("data.", "") for c in rename_cols], rename_cols))
+                logging.debug("Rename mapping is %s" % rename_mapping)
+                df.rename(columns=rename_mapping, inplace=True)
+                logging.debug("After renaming columns, they are %s" % df.columns)
             esdsq.store_dashboard_time(
-                "admin/db_utils/query_confirmed_trips/convert_object_columns_to_strings",
+                "admin/db_utils/query_confirmed_trips/rename_columns",
+                stage3_timer
+            )
+    
+            # Stage 4: Copy Coordinates
+            with ect.Timer() as stage4_timer:
+                # Now copy over the coordinates
+                df['data.start_loc.coordinates'] = df['start_loc'].apply(lambda g: g["coordinates"])
+                df['data.end_loc.coordinates'] = df['end_loc'].apply(lambda g: g["coordinates"])
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_confirmed_trips/copy_coordinates",
                 stage4_timer
             )
-            
-            # Stage 5: Drop Metadata Columns
+    
+            # Stage 5: Add Primary Modes
             with ect.Timer() as stage5_timer:
-                # Drop metadata columns
-                columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
-                df.drop(columns=columns_to_drop, inplace=True)
+                # Add primary modes from the sensed, inferred and ble summaries. Note that we do this
+                # **before** filtering the `all_trip_columns` because the
+                # *_section_summary columns are not currently valid
+                
+                # Check if 'md' is not a dictionary or does not contain the key 'distance'
+                # or if 'md["distance"]' is not a dictionary.
+                # If any of these conditions are true, return "INVALID".
+                get_max_mode_from_summary = lambda md: (
+                    "INVALID"
+                    if not isinstance(md, dict)
+                    or "distance" not in md
+                    or not isinstance(md["distance"], dict)
+                    # If 'md' is a dictionary and 'distance' is a valid key pointing to a dictionary:
+                    else (
+                        # Get the maximum value from 'md["distance"]' using the values of 'md["distance"].get' as the key for 'max'.
+                        # This operation only happens if the length of 'md["distance"]' is greater than 0.
+                        # Otherwise, return "INVALID".
+                        max(md["distance"], key=md["distance"].get)
+                        if len(md["distance"]) > 0
+                        else "INVALID"
+                    )
+                )
+    
+                df["data.primary_sensed_mode"] = df.cleaned_section_summary.apply(get_max_mode_from_summary)
+                df["data.primary_predicted_mode"] = df.inferred_section_summary.apply(get_max_mode_from_summary)
+                if 'ble_sensed_summary' in df.columns:
+                    df["data.primary_ble_sensed_mode"] = df.ble_sensed_summary.apply(get_max_mode_from_summary)
+                else:
+                    logging.debug("No BLE support found, not fleet version, ignoring...")
             esdsq.store_dashboard_time(
-                "admin/db_utils/query_confirmed_trips/drop_metadata_columns",
+                "admin/db_utils/query_confirmed_trips/add_primary_modes",
                 stage5_timer
             )
-            
-            # Stage 6: Drop or Modify Excluded Columns
+    
+            # Stage 6: Expand User Inputs
             with ect.Timer() as stage6_timer:
-                # Drop or modify excluded columns
-                for col in constants.EXCLUDED_TRAJECTORIES_COLS:
-                    if col in df.columns:
-                        df.drop(columns=[col], inplace=True)
-            esdsq.store_dashboard_time(
-                "admin/db_utils/query_confirmed_trips/drop_or_modify_excluded_columns",
-                stage6_timer
-            )
-            
-            # I dont think we even implemented this..
-            # need fix asap
-            # Stage 7: Handle 'background/location' Key
-            with ect.Timer() as stage7_timer:
-                # Check if 'background/location' is in the key_list
-                if 'background/location' in key_list:
-                    if 'data.mode' in df.columns:
-                        # Set the values in data.mode to blank ('')
-                        df['data.mode'] = ''
-                else:
-                    # Map mode to its corresponding string value
-                    df['data.mode_str'] = df['data.mode'].apply(
-                        lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
-                    )
-            esdsq.store_dashboard_time(
-                "admin/db_utils/query_confirmed_trips/handle_background_location_key",
-                stage7_timer
-            )
-            
-            # Stage 8: Clean and Modify DataFrames
-            with ect.Timer() as stage8_timer:
                 # Expand the user inputs
                 user_input_df = pd.json_normalize(df.user_input)
                 df = pd.concat([df, user_input_df], axis='columns')
-                user_input_cols = [
-                    c for c in user_input_df.columns
+                logging.debug(f"Before filtering {user_input_df.columns=}")
+                user_input_cols = [c for c in user_input_df.columns
                     if "metadata" not in c and
                        "xmlns" not in c and
                        "local_dt" not in c and
                        'xmlResponse' not in c and
-                       "_id" not in c
-                ]
+                       "_id" not in c]
+                logging.debug(f"After filtering {user_input_cols=}")
             esdsq.store_dashboard_time(
-                "admin/db_utils/query_confirmed_trips/clean_and_modify_dataframes",
-                stage8_timer
+                "admin/db_utils/query_confirmed_trips/expand_user_inputs",
+                stage6_timer
             )
-            
-            # Stage 9: Filter and Combine Columns
-            with ect.Timer() as stage9_timer:
+    
+            # Stage 7: Filter and Combine Columns
+            with ect.Timer() as stage7_timer:
                 combined_col_list = list(perm_utils.get_all_trip_columns()) + user_input_cols
+                logging.debug(f"Combined list {combined_col_list=}")
                 columns = [col for col in combined_col_list if col in df.columns]
                 df = df[columns]
+                logging.debug(f"After filtering against the combined list {df.columns=}")
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_confirmed_trips/filter_and_combine_columns",
+                stage7_timer
+            )
+    
+            # Stage 8: Convert Binary Columns to Strings
+            with ect.Timer() as stage8_timer:
                 for col in constants.BINARY_TRIP_COLS:
                     if col in df.columns:
                         df[col] = df[col].apply(str)
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_confirmed_trips/convert_binary_columns",
+                stage8_timer
+            )
+    
+            # Stage 9: Rename Named Columns
+            with ect.Timer() as stage9_timer:
                 for named_col in perm_utils.get_all_named_trip_columns():
                     if named_col['path'] in df.columns:
                         df[named_col['label']] = df[named_col['path']]
                         # df = df.drop(columns=[named_col['path']])
+            esdsq.store_dashboard_time(
+                "admin/db_utils/query_confirmed_trips/rename_named_columns",
+                stage9_timer
+            )
+    
+            # Stage 10: Humanize Distance and Duration
+            with ect.Timer() as stage10_timer:
                 # TODO: We should really display both the humanized value and the raw value
                 # humanized value for people to see the entries in real time
                 # raw value to support analyses on the downloaded data
@@ -265,18 +295,21 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
                 df['data.duration_seconds'] = df['data.duration']
                 if use_imperial:
                     df['data.distance_miles'] = df['data.distance_km'] * 0.6213712
-
+    
                 df['data.duration'] = df['data.duration'].apply(lambda d: arrow.utcnow().shift(seconds=d).humanize(only_distance=True))
             esdsq.store_dashboard_time(
-                "admin/db_utils/query_confirmed_trips/filter_and_combine_columns",
-                stage9_timer
+                "admin/db_utils/query_confirmed_trips/humanize_distance_and_duration",
+                stage10_timer
             )
-        
+    
+    # Stage 11: Final Timing and Return
     esdsq.store_dashboard_time(
         "admin/db_utils/query_confirmed_trips/total_time",
         total_timer
     )
+    logging.debug(f'Time taken for Query_Confirmed_Trips: {total_timer.elapsed_ms:.4f} ms')
     return (df, user_input_cols)
+
 
 def query_demographics():
     """
