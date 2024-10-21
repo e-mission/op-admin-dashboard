@@ -85,3 +85,39 @@
   width: 10px;
   height: 10px;
 }
+
+
+/* Token page styles */
+.token-input {
+  font-size: 14px;
+  width: 100%;
+  display: block;
+  margin: .5em;
+  padding: .1em .6em;
+  height: 30px;
+  vertical-align: top;
+  background-color: #b4dbf0;
+  overflow: hidden;
+  border-radius: .3em;
+}
+
+.token-button, .export {
+  font-size: 14px;
+  width: 140px;
+  display: block;
+  margin-bottom: 10px;
+  margin-right: 5px;
+  height: 40px;
+  vertical-align: top;
+  background-color: green;
+  color: white;
+  border-radius: .5em;
+}
+
+.tokens-container {
+  padding: 10px;
+  margin: 5px;
+  border: 1px solid #444444;
+  border-radius: 1em;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}

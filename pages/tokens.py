@@ -25,80 +25,68 @@ layout = html.Div(
         dcc.Markdown(intro),
         dbc.Row([
             dbc.Col(
-                [
-                    html.Label('Program'),
-                    dcc.Input(value='program', id='token-program', type='text', required=True, style={
-                        'font-size': '14px', 'width': '100%', 'display': 'block', 'margin-bottom': '10px',
-                        'margin-right': '5px', 'height': '30px', 'verticalAlign': 'top', 'background-color': '#b4dbf0',
-                        'overflow': 'hidden',
-                    }),
+                html.Div([
+                    dbc.Row([
 
-                    html.Label('Token Length'),
-                    dcc.Input(value=5, id='token-length', type='number', min=3, max=100, required=True, style={
-                        'font-size': '14px', 'width': '100%', 'display': 'block', 'margin-bottom': '10px',
-                        'margin-right': '5px', 'height': '30px', 'verticalAlign': 'top', 'background-color': '#b4dbf0',
-                        'overflow': 'hidden',
-                    }),
+                        dbc.Col([
+                            html.Label('Program'),
+                            dcc.Input(value='program', id='token-program', type='text', required=True, className='token-input'),
 
-                    html.Label('Number of Tokens'),
-                    dcc.Input(value=1, id='token-count', type='number', min=0, required=True, style={
-                        'font-size': '14px', 'width': '100%', 'display': 'block', 'margin-bottom': '10px',
-                        'margin-right': '5px', 'height': '30px', 'verticalAlign': 'top', 'background-color': '#b4dbf0',
-                        'overflow': 'hidden',
-                    }),
-                ],
-                xl=3,
-                lg=4,
-                sm=6,
-            ),
-            dbc.Col(
-                [
-                    html.Label('Out Format'),
-                    dcc.Dropdown(options=['url safe', 'hex', 'base64'], value='url safe', id='token-format'),
+                            html.Label('Token Length'),
+                            dcc.Input(value=5, id='token-length', type='number', min=3, max=100, required=True, className='token-input'),
 
-                    html.Br(),
-                    dcc.Checklist(
-                        className='radio-items',
-                        id='token-checklist',
-                        options=[{'label': 'For Testing', 'value': 'test-token'}],
-                        value=[],
-                        style={
-                            'padding': '5px',
-                            'margin': 'auto'
-                        }
-                    ),
+                            html.Label('Number of Tokens'),
+                            dcc.Input(value=1, id='token-count', type='number', min=0, required=True, className='token-input'),
+                        ], md=6),
 
-                    html.Br(),
-                    html.Div([
-                        html.Button(children='Generate Tokens', id='token-generate', n_clicks=0, style={
-                            'font-size': '14px', 'width': '140px', 'display': 'block', 'margin-bottom': '10px',
-                            'margin-right': '5px', 'height':'40px', 'verticalAlign': 'top', 'background-color': 'green',
-                            'color': 'white',
-                        }),
-                        dcc.Download(id='download-token'),
+                        dbc.Col([
+                            html.Label('Out Format'),
+                            dcc.Dropdown(options=['urlsafe', 'hex'], value='urlsafe', id='token-format'),
+
+                            html.Br(),
+                            dcc.Checklist(
+                                className='radio-items',
+                                id='token-checklist',
+                                options=[{'label': 'For Testing', 'value': 'test-token'}],
+                                value=[],
+                                style={'padding': '5px', 'margin': 'auto'}
+                            ),
+
+                            html.Br(),
+                            html.Div([
+                                html.Button(children='Generate Tokens', id='token-generate', n_clicks=0, className='token-button'),
+                                dcc.Download(id='download-token'),
+                            ])
+                        ], md=6)
+
+                    ]),
+
+                    dbc.Row([
+                            html.Div(id='new-tokens-table'),
+
+                            html.Br(),
+                            html.Button(children='Export QR codes', id='token-export', n_clicks=0, className='token-button'),
                     ])
-
-                ],
-                xl=3,
-                lg=4,
-                sm=6,
+                ], className="tokens-container"),
+                lg=6,
             ),
-        ]),
 
-        html.Div(id='token-table'),
+            dbc.Col(
+                html.Div([
+                    html.Div(id='all-tokens-table'),
 
-        html.Br(),
-        html.Button(children='Export QR codes', id='token-export', n_clicks=0, style={
-            'font-size': '14px', 'width': '140px', 'display': 'block', 'margin-bottom': '10px',
-            'margin-right': '5px', 'height':'40px', 'verticalAlign': 'top', 'background-color': 'green',
-            'color': 'white',
-        }),
+                    html.Br(),
+                    html.Button(children='Export QR codes', id='token-export', n_clicks=0, className='token-button'),
+                ], className="tokens-container"),
+                lg=6
+            ),
+        ])
     ]
 )
 
 @callback(
     Output('token-generate', 'n_clicks'),
-    Output('token-table', 'children'),
+    Output('all-tokens-table', 'children'),
     Input('token-generate', 'n_clicks'),
     State('token-program', 'value'),
     State('token-length', 'value'),
