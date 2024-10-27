@@ -355,9 +355,9 @@ def query_demographics():
     return dataframes
 
 
-def query_trajectories(start_date: str, end_date: str, tz: str):
+def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
     with ect.Timer() as total_timer:
-
+        key_list = [key_list] if isinstance(key_list, str) else key_list
         # Stage 1: Convert date range to timestamps
         with ect.Timer() as stage1_timer:
             (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
@@ -370,7 +370,7 @@ def query_trajectories(start_date: str, end_date: str, tz: str):
         with ect.Timer() as stage2_timer:
             ts = esta.TimeSeries.get_aggregate_time_series()
             entries = ts.find_entries(
-                key_list=["analysis/recreated_location"],
+                key_list=key_list,
                 time_query=estt.TimeQuery("data.ts", start_ts, end_ts),
             )
         esdsq.store_dashboard_time(
@@ -408,9 +408,14 @@ def query_trajectories(start_date: str, end_date: str, tz: str):
 
             # Stage 5: Add human-readable mode string
             with ect.Timer() as stage5_timer:
-                df['data.mode_str'] = df['data.mode'].apply(
-                    lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
-                )
+                if 'background/location' in key_list:
+                    if 'data.mode' in df.columns:
+                        # Set the values in data.mode to blank ('')
+                        df['data.mode'] = ''
+                else:
+                    df['data.mode_str'] = df['data.mode'].apply(
+                        lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
+                    )
             esdsq.store_dashboard_time(
                 "admin/db_utils/query_trajectories/add_mode_string",
                 stage5_timer

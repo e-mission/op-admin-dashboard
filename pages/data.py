@@ -89,12 +89,12 @@ def clean_location_data(df):
 
     return df
 
-def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids):
+def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids, key_list):
     with ect.Timer() as total_timer:
 
         # Stage 1: Query trajectories
         with ect.Timer() as stage1_timer:
-            df = query_trajectories(start_date, end_date, tz)
+            df = query_trajectories(start_date, end_date, tz, key_list)
         esdsq.store_dashboard_time(
             "admin/data/update_store_trajectories/query_trajectories",
             stage1_timer
