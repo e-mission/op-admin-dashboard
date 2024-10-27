@@ -172,157 +172,172 @@ def render_content(
     start_date, end_date, timezone, n_intervals, key_list, current_page,
     loaded_uuids_store, all_data_loaded
 ):
-    initial_batch_size = 10  # Define the batch size for loading UUIDs
+    with ect.Timer() as total_timer:
+        initial_batch_size = 10  # Define the batch size for loading UUIDs
 
-    # Update selected tab
-    selected_tab = tab
-    logging.debug(f"Callback - {selected_tab} Stage 1: Selected tab updated.")
-    
-    # Handle the UUIDs tab without fullscreen loading spinner
-    if tab == 'tab-uuids-datatable':
-        start_time = time.time()
-        logging.debug(f"Callback - {selected_tab} Stage 2: Handling UUIDs tab.")
+        # Stage 1: Update selected tab
+        selected_tab = tab
+        logging.debug(f"Callback - {selected_tab} Stage 1: Selected tab updated.")
 
-        # Ensure store_uuids contains the key 'data' which is a list of dictionaries
-        if not isinstance(store_uuids, dict) or 'data' not in store_uuids:
-            logging.error(f"Expected store_uuids to be a dict with a 'data' key, but got {type(store_uuids)}")
-            return html.Div([html.P("Data structure error.")]), loaded_uuids_store, True
+        # Handle the UUIDs tab without fullscreen loading spinner
+        if tab == 'tab-uuids-datatable':
+            with ect.Timer() as handle_uuids_timer:
+                logging.debug(f"Callback - {selected_tab} Stage 2: Handling UUIDs tab.")
 
-        uuids_list = store_uuids['data']
+                # Ensure store_uuids contains the key 'data' which is a list of dictionaries
+                if not isinstance(store_uuids, dict) or 'data' not in store_uuids:
+                    logging.error(f"Expected store_uuids to be a dict with a 'data' key, but got {type(store_uuids)}")
+                    return html.Div([html.P("Data structure error.")]), loaded_uuids_store, True
 
-        # Ensure uuids_list is a list for slicing
-        if not isinstance(uuids_list, list):
-            logging.error(f"Expected store_uuids['data'] to be a list but got {type(uuids_list)}")
-            return html.Div([html.P("Data structure error.")]), loaded_uuids_store, True
+                uuids_list = store_uuids['data']
 
-        loaded_data = loaded_uuids_store.get('data', [])
-        total_loaded = len(loaded_data)
+                # Ensure uuids_list is a list for slicing
+                if not isinstance(uuids_list, list):
+                    logging.error(f"Expected store_uuids['data'] to be a list but got {type(uuids_list)}")
+                    return html.Div([html.P("Data structure error.")]), loaded_uuids_store, True
 
-        # Handle lazy loading
-        if not loaded_uuids_store.get('loaded', False):
-            total_to_load = total_loaded + initial_batch_size
-            total_to_load = min(total_to_load, len(uuids_list))  # Avoid loading more than available
+                loaded_data = loaded_uuids_store.get('data', [])
+                total_loaded = len(loaded_data)
 
-            logging.debug(f"Callback - {selected_tab} Stage 3: Loading next batch of UUIDs from {total_loaded} to {total_to_load}.")
+                # Handle lazy loading
+                if not loaded_uuids_store.get('loaded', False):
+                    total_to_load = total_loaded + initial_batch_size
+                    total_to_load = min(total_to_load, len(uuids_list))  # Avoid loading more than available
 
-            new_data = uuids_list[total_loaded:total_to_load]
+                    logging.debug(f"Callback - {selected_tab} Stage 3: Loading next batch of UUIDs from {total_loaded} to {total_to_load}.")
 
-            if new_data:
-                # Process and append the new data to the loaded store
-                processed_data = db_utils.add_user_stats(new_data, initial_batch_size)
-                loaded_data.extend(processed_data)
-                
-                # Update the store with the new data
-                loaded_uuids_store['data'] = loaded_data  # Mark all data as loaded if done
-                loaded_uuids_store['loaded'] = len(loaded_data) >= len(uuids_list)
+                    new_data = uuids_list[total_loaded:total_to_load]
 
-                logging.debug(f"Callback - {selected_tab} Stage 4: New batch loaded. Total loaded: {len(loaded_data)}.")
+                    if new_data:
+                        # Process and append the new data to the loaded store
+                        processed_data = db_utils.add_user_stats(new_data, initial_batch_size)
+                        loaded_data.extend(processed_data)
+                        
+                        # Update the store with the new data
+                        loaded_uuids_store['data'] = loaded_data  # Mark all data as loaded if done
+                        loaded_uuids_store['loaded'] = len(loaded_data) >= len(uuids_list)
 
-        # Prepare the data to be displayed
-        columns = perm_utils.get_uuids_columns()  # Get the relevant columns
-        df = pd.DataFrame(loaded_data)
+                        logging.debug(f"Callback - {selected_tab} Stage 4: New batch loaded. Total loaded: {len(loaded_data)}.")
 
-        if df.empty or not perm_utils.has_permission('data_uuids'):
-            logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
-            return html.Div([html.P("No data available or you don't have permission.")]), loaded_uuids_store, True
+                # Prepare the data to be displayed
+                columns = perm_utils.get_uuids_columns()  # Get the relevant columns
+                df = pd.DataFrame(loaded_data)
 
-        df = df.drop(columns=[col for col in df.columns if col not in columns])
+                if df.empty or not perm_utils.has_permission('data_uuids'):
+                    logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
+                    return html.Div([html.P("No data available or you don't have permission.")]), loaded_uuids_store, True
 
-        logging.debug(f"Callback - {selected_tab} Stage 5: Returning appended data to update the UI.")
-        content = html.Div([
-            populate_datatable(df, table_id='uuid-table', page_current=current_page),  # Pass current_page
-            html.P(
-                f"Showing {len(loaded_data)} of {len(uuids_list)} UUIDs." +
-                (f" Loading 10 more..." if not loaded_uuids_store.get('loaded', False) else ""),
-                style={'margin': '15px 5px'}
+                df = df.drop(columns=[col for col in df.columns if col not in columns])
+
+                logging.debug(f"Callback - {selected_tab} Stage 5: Returning appended data to update the UI.")
+                content = html.Div([
+                    populate_datatable(df, table_id='uuid-table', page_current=current_page),  # Pass current_page
+                    html.P(
+                        f"Showing {len(loaded_data)} of {len(uuids_list)} UUIDs." +
+                        (f" Loading 10 more..." if not loaded_uuids_store.get('loaded', False) else ""),
+                        style={'margin': '15px 5px'}
+                    )
+                ])
+
+                return content, loaded_uuids_store, False if not loaded_uuids_store['loaded'] else True
+
+            esdsq.store_dashboard_time(
+                "admin/data/render_content/handle_uuids_tab",
+                handle_uuids_timer
             )
-        ])
 
-        elapsed_time = time.time() - start_time
-        logging.info(f"Callback - {selected_tab} Stage 6: Total Time for UUIDs Tab: {elapsed_time:.2f} seconds")
+        # Handle Trips tab
+        elif tab == 'tab-trips-datatable':
+            with ect.Timer() as handle_trips_timer:
+                logging.debug(f"Callback - {selected_tab} Stage 2: Handling Trips tab.")
 
-        return content, loaded_uuids_store, False if not loaded_uuids_store['loaded'] else True
+                data = store_trips["data"]
+                columns = perm_utils.get_allowed_trip_columns()
+                columns.update(col['label'] for col in perm_utils.get_allowed_named_trip_columns())
+                columns.update(store_trips["userinputcols"])
+                has_perm = perm_utils.has_permission('data_trips')
 
-    # Handle other tabs normally
-    elif tab == 'tab-trips-datatable':
-        start_time = time.time()
-        logging.debug(f"Callback - {selected_tab} Stage 2: Handling Trips tab.")
+                df = pd.DataFrame(data)
+                if df.empty or not has_perm:
+                    logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
+                    return None, loaded_uuids_store, True
 
-        data = store_trips["data"]
-        columns = perm_utils.get_allowed_trip_columns()
-        columns.update(col['label'] for col in perm_utils.get_allowed_named_trip_columns())
-        columns.update(store_trips["userinputcols"])
-        has_perm = perm_utils.has_permission('data_trips')
+                df = df.drop(columns=[col for col in df.columns if col not in columns])
+                df = clean_location_data(df)
 
-        df = pd.DataFrame(data)
-        if df.empty or not has_perm:
-            logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
+                trips_table = populate_datatable(df)
+
+                return html.Div([
+                    html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
+                    trips_table
+                ]), loaded_uuids_store, True
+
+            esdsq.store_dashboard_time(
+                "admin/data/render_content/handle_trips_tab",
+                handle_trips_timer
+            )
+
+        # Handle Demographics tab
+        elif tab == 'tab-demographics-datatable':
+            with ect.Timer() as handle_demographics_timer:
+                data = store_demographics["data"]
+                has_perm = perm_utils.has_permission('data_demographics')
+
+                if len(data) == 1:
+                    data = list(data.values())[0]
+                    columns = list(data[0].keys())
+                elif len(data) > 1:
+                    if not has_perm:
+                        return None, loaded_uuids_store, True
+                    return html.Div([
+                        dcc.Tabs(id='subtabs-demographics', value=list(data.keys())[0], children=[
+                            dcc.Tab(label=key, value=key) for key in data
+                        ]),
+                        html.Div(id='subtabs-demographics-content')
+                    ]), loaded_uuids_store, True
+
+            esdsq.store_dashboard_time(
+                "admin/data/render_content/handle_demographics_tab",
+                handle_demographics_timer
+            )
+
+        # Handle Trajectories tab
+        elif tab == 'tab-trajectories-datatable':
+            with ect.Timer() as handle_trajectories_timer:
+                (start_date, end_date) = iso_to_date_only(start_date, end_date)
+                # Fetch new data based on the selected key_list from the keylist-switch
+                if store_trajectories == {} or key_list:
+                    store_trajectories = update_store_trajectories(start_date, end_date, timezone, store_excluded_uuids, key_list)
+
+                data = store_trajectories.get("data", [])
+                if data:
+                    columns = list(data[0].keys())
+                    columns = perm_utils.get_trajectories_columns(columns)
+                    has_perm = perm_utils.has_permission('data_trajectories')
+
+                df = pd.DataFrame(data)
+                if df.empty or not has_perm:
+                    logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
+                    return None, loaded_uuids_store, True
+
+                df = df.drop(columns=[col for col in df.columns if col not in columns])
+
+                return populate_datatable(df), loaded_uuids_store, True
+
+            esdsq.store_dashboard_time(
+                "admin/data/render_content/handle_trajectories_tab",
+                handle_trajectories_timer
+            )
+
+        # Handle unhandled tabs or errors
+        else:
+            logging.debug(f"Callback - {selected_tab} Error Stage: No data loaded or unhandled tab.")
             return None, loaded_uuids_store, True
 
-        df = df.drop(columns=[col for col in df.columns if col not in columns])
-        df = clean_location_data(df)
-
-        trips_table = populate_datatable(df)
-        elapsed_time = time.time() - start_time
-        logging.info(f"Callback - {selected_tab} Stage 3: Total Time for Trips Tab: {elapsed_time:.2f} seconds")
-
-        return html.Div([
-            html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
-            trips_table
-        ]), loaded_uuids_store, True
-
-    elif tab == 'tab-demographics-datatable':
-        start_time = time.time()
-        logging.debug(f"Callback - {selected_tab} Stage 2: Handling Demographics tab.")
-
-        data = store_demographics["data"]
-        has_perm = perm_utils.has_permission('data_demographics')
-
-        if len(data) == 1:
-            data = list(data.values())[0]
-            columns = list(data[0].keys())
-        elif len(data) > 1:
-            if not has_perm:
-                return None, loaded_uuids_store, True
-            return html.Div([
-                dcc.Tabs(id='subtabs-demographics', value=list(data.keys())[0], children=[
-                    dcc.Tab(label=key, value=key) for key in data
-                ]),
-                html.Div(id='subtabs-demographics-content')
-            ]), loaded_uuids_store, True
-
-        elapsed_time = time.time() - start_time
-        logging.info(f"Callback - {selected_tab} Stage 3: Total Time for Demographics Tab: {elapsed_time:.2f} seconds")
-
-    elif tab == 'tab-trajectories-datatable':
-        start_time = time.time()
-        logging.debug(f"Callback - {selected_tab} Stage 2: Handling Trajectories tab.")
-
-        (start_date, end_date) = iso_to_date_only(start_date, end_date)
-        # Fetch new data based on the selected key_list from the keylist-switch
-        if store_trajectories == {} or key_list:
-            store_trajectories = update_store_trajectories(start_date, end_date, timezone, store_excluded_uuids, key_list)
-
-        data = store_trajectories.get("data", [])
-        if data:
-            columns = list(data[0].keys())
-            columns = perm_utils.get_trajectories_columns(columns)
-            has_perm = perm_utils.has_permission('data_trajectories')
-
-        df = pd.DataFrame(data)
-        if df.empty or not has_perm:
-            logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
-            return None, loaded_uuids_store, True
-
-        df = df.drop(columns=[col for col in df.columns if col not in columns])
-
-        elapsed_time = time.time() - start_time
-        logging.info(f"Callback - {selected_tab} Stage 3: Total Time for Trajectories Tab: {elapsed_time:.2f} seconds")
-
-        return populate_datatable(df), loaded_uuids_store, True
-
-    # Default case: if no data is loaded or the tab is not handled
-    logging.debug(f"Callback - {selected_tab} Error Stage: No data loaded or unhandled tab.")
+    esdsq.store_dashboard_time(
+        "admin/data/render_content/total_time",
+        total_timer
+    )
     return None, loaded_uuids_store, True
 
 # Handle subtabs for demographic table when there are multiple surveys
@@ -422,27 +437,47 @@ def update_dropdowns_trips(n_clicks, button_label):
 
 
 def populate_datatable(df, table_id='', page_current=0):
-    if not isinstance(df, pd.DataFrame):
-        raise PreventUpdate
-    return dash_table.DataTable(
-        id=table_id,
-        # columns=[{"name": i, "id": i} for i in df.columns],
-        data=df.to_dict('records'),
-        export_format="csv",
-        filter_options={"case": "sensitive"},
-        # filter_action="native",
-        sort_action="native",  # give user capability to sort columns
-        sort_mode="single",  # sort across 'multi' or 'single' columns
-        page_current=page_current,  # set to current page
-        page_size=50,  # number of rows visible per page
-        style_cell={
-            'textAlign': 'left',
-            # 'minWidth': '100px',
-            # 'width': '100px',
-            # 'maxWidth': '100px',
-        },
-        style_table={'overflowX': 'auto'},
-        css=[{"selector":".show-hide", "rule":"display:none"}]
+    with ect.Timer() as total_timer:
+        # Stage 1: Check if df is a DataFrame and raise PreventUpdate if not
+        with ect.Timer() as stage1_timer:
+            if not isinstance(df, pd.DataFrame):
+                raise PreventUpdate
+        esdsq.store_dashboard_time(
+            "admin/data/populate_datatable/check_dataframe_type",
+            stage1_timer
+        )
+        
+        # Stage 2: Create DataTable
+        with ect.Timer() as stage2_timer:
+            table = dash_table.DataTable(
+                id=table_id,
+                # columns=[{"name": i, "id": i} for i in df.columns],
+                data=df.to_dict('records'),
+                export_format="csv",
+                filter_options={"case": "sensitive"},
+                # filter_action="native",
+                sort_action="native",  # give user capability to sort columns
+                sort_mode="single",  # sort across 'multi' or 'single' columns
+                page_current=page_current,  # set to current page
+                page_size=50,  # number of rows visible per page
+                style_cell={
+                    'textAlign': 'left',
+                    # 'minWidth': '100px',
+                    # 'width': '100px',
+                    # 'maxWidth': '100px',
+                },
+                style_table={'overflowX': 'auto'},
+                css=[{"selector":".show-hide", "rule":"display:none"}]
+            )
+        esdsq.store_dashboard_time(
+            "admin/db_utils/populate_datatable/create_datatable",
+            stage2_timer
+        )
+        
+    esdsq.store_dashboard_time(
+        "admin/db_utils/populate_datatable/total_time",
+        total_timer
     )
+    return table
 
-    return result
+
