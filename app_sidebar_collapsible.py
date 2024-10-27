@@ -210,12 +210,11 @@ def make_controls():
              'flex-direction': 'column'}
   )
 
-
 page_content = dcc.Loading(
     id='global-loading',
     type='default',
     fullscreen=True,
-    overlay_style={"visibility": "visible", "filter": "blur(2px)"},
+    overlay_style={"visibility": "visible", "filter": "opacity(0.5)"},
     style={"background-color": "transparent"},
     children=html.Div(dash.page_container, style={
         "margin-left": "5rem",
