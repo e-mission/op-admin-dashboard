@@ -446,6 +446,7 @@ def add_user_stats(user_data, batch_size=5):
                     user['app_version'] = profile_data.get('client_app_version')
                     user['os_version'] = profile_data.get('client_os_version')
                     user['phone_lang'] = profile_data.get('phone_lang')
+
                     
                     # Assign newly stored statistics to the user dictionary
                     user['total_trips'] = profile_data.get('total_trips', 0)
@@ -480,7 +481,7 @@ def add_user_stats(user_data, batch_size=5):
                     user['pipeline_end_ts'] = None
                     user['last_call'] = None
                     user['formatted_last_call'] = None
-                
+                    
             esdsq.store_dashboard_time(
                 "admin/db_utils/add_user_stats/process_user",
                 process_user_timer
