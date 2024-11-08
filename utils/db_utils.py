@@ -431,86 +431,64 @@ def add_user_stats(user_data):
             user_uuid = UUID(user['user_id'])
 
             # Stage 1: Count total trips
-            with ect.Timer() as stage1_timer:
-                total_trips = esta.TimeSeries.get_aggregate_time_series().find_entries_count(
-                    key_list=["analysis/confirmed_trip"],
-                    extra_query_list=[{'user_id': user_uuid}]
-                )
-                user['total_trips'] = total_trips
-            esdsq.store_dashboard_time(
-                "admin/db_utils/add_user_stats/count_total_trips",
-                stage1_timer
-            )
+            # with ect.Timer() as stage1_timer:
+            #     total_trips = esta.TimeSeries.get_aggregate_time_series().find_entries_count(
+            #         key_list=["analysis/confirmed_trip"],
+            #         extra_query_list=[{'user_id': user_uuid}]
+            #     )
+            #     user['total_trips'] = total_trips
+            # esdsq.store_dashboard_time(
+            #     "admin/db_utils/add_user_stats/count_total_trips",
+            #     stage1_timer
+            # )
 
-            # Stage 2: Count labeled trips
-            with ect.Timer() as stage2_timer:
-                labeled_trips = esta.TimeSeries.get_aggregate_time_series().find_entries_count(
-                    key_list=["analysis/confirmed_trip"],
-                    extra_query_list=[{'user_id': user_uuid}, {'data.user_input': {'$ne': {}}}]
-                )
-                user['labeled_trips'] = labeled_trips
-            esdsq.store_dashboard_time(
-                "admin/db_utils/add_user_stats/count_labeled_trips",
-                stage2_timer
-            )
+            # # Stage 2: Count labeled trips
+            # with ect.Timer() as stage2_timer:
+            #     labeled_trips = esta.TimeSeries.get_aggregate_time_series().find_entries_count(
+            #         key_list=["analysis/confirmed_trip"],
+            #         extra_query_list=[{'user_id': user_uuid}, {'data.user_input': {'$ne': {}}}]
+            #     )
+            #     user['labeled_trips'] = labeled_trips
+            # esdsq.store_dashboard_time(
+            #     "admin/db_utils/add_user_stats/count_labeled_trips",
+            #     stage2_timer
+            # )
 
             # Stage 3: Retrieve user profile data
             with ect.Timer() as stage3_timer:
+                # Fetch the user's profile data from the database
                 profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
+                
+                # Assign existing profile attributes to the user dictionary
                 user['platform'] = profile_data.get('curr_platform')
                 user['manufacturer'] = profile_data.get('manufacturer')
                 user['app_version'] = profile_data.get('client_app_version')
                 user['os_version'] = profile_data.get('client_os_version')
                 user['phone_lang'] = profile_data.get('phone_lang')
+                
+                # **Retrieve and Assign New User Statistics**
+                # Pipeline Range
+                pipeline_range = profile_data.get('pipeline_range', {})
+                user['pipeline_start_ts'] = pipeline_range.get('start_ts')
+                user['pipeline_end_ts'] = pipeline_range.get('end_ts')
+                
+                # Trip Counts
+                user['total_trips'] = profile_data.get('total_trips', 0)
+                user['labeled_trips'] = profile_data.get('labeled_trips', 0)
+                
+                # Last API Call Timestamp
+                user['last_call'] = profile_data.get('last_call')
+                # Optional: Format the last_call timestamp if needed
+                # For example, if we want to display it in a human-readable format
+                if user['last_call']:
+                    user['formatted_last_call'] = arrow.get(user['last_call']).format('YYYY-MM-DD HH:mm:ss')
+                else:
+                    user['formatted_last_call'] = None
+
             esdsq.store_dashboard_time(
                 "admin/db_utils/add_user_stats/retrieve_user_profile_data",
                 stage3_timer
             )
-
-            if total_trips > 0:
-                # Stage 4: Get first trip timestamp
-                with ect.Timer() as stage4_timer:
-                    time_format = 'YYYY-MM-DD HH:mm:ss'
-                    ts = esta.TimeSeries.get_time_series(user_uuid)
-                    start_ts = ts.get_first_value_for_field(
-                        key='analysis/confirmed_trip',
-                        field='data.end_ts',
-                        sort_order=pymongo.ASCENDING
-                    )
-                    if start_ts != -1:
-                        user['first_trip'] = arrow.get(start_ts).format(time_format)
-                esdsq.store_dashboard_time(
-                    "admin/db_utils/add_user_stats/get_first_trip_timestamp",
-                    stage4_timer
-                )
-
-                # Stage 5: Get last trip timestamp
-                with ect.Timer() as stage5_timer:
-                    end_ts = ts.get_first_value_for_field(
-                        key='analysis/confirmed_trip',
-                        field='data.end_ts',
-                        sort_order=pymongo.DESCENDING
-                    )
-                    if end_ts != -1:
-                        user['last_trip'] = arrow.get(end_ts).format(time_format)
-                esdsq.store_dashboard_time(
-                    "admin/db_utils/add_user_stats/get_last_trip_timestamp",
-                    stage5_timer
-                )
-
-                # Stage 6: Get last server call timestamp
-                with ect.Timer() as stage6_timer:
-                    last_call = ts.get_first_value_for_field(
-                        key='stats/server_api_time',
-                        field='data.ts',
-                        sort_order=pymongo.DESCENDING
-                    )
-                    if last_call != -1:
-                        user['last_call'] = arrow.get(last_call).format(time_format)
-                esdsq.store_dashboard_time(
-                    "admin/db_utils/add_user_stats/get_last_server_call_timestamp",
-                    stage6_timer
-                )
 
     esdsq.store_dashboard_time(
         "admin/db_utils/add_user_stats/total_time",
