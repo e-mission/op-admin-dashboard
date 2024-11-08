@@ -18,6 +18,7 @@ import emission.storage.decorations.stats_queries as esdsq
 from utils import constants
 from utils import permissions as perm_utils
 from utils.datetime_utils import iso_range_to_ts_range
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude: list[str] = []):
     """
@@ -354,9 +355,9 @@ def query_demographics():
     return dataframes
 
 
-def query_trajectories(start_date: str, end_date: str, tz: str):
+def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
     with ect.Timer() as total_timer:
-
+        key_list = [key_list] if isinstance(key_list, str) else key_list
         # Stage 1: Convert date range to timestamps
         with ect.Timer() as stage1_timer:
             (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
@@ -369,7 +370,7 @@ def query_trajectories(start_date: str, end_date: str, tz: str):
         with ect.Timer() as stage2_timer:
             ts = esta.TimeSeries.get_aggregate_time_series()
             entries = ts.find_entries(
-                key_list=["analysis/recreated_location"],
+                key_list=key_list,
                 time_query=estt.TimeQuery("data.ts", start_ts, end_ts),
             )
         esdsq.store_dashboard_time(
@@ -407,9 +408,14 @@ def query_trajectories(start_date: str, end_date: str, tz: str):
 
             # Stage 5: Add human-readable mode string
             with ect.Timer() as stage5_timer:
-                df['data.mode_str'] = df['data.mode'].apply(
-                    lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
-                )
+                if 'background/location' in key_list:
+                    if 'data.mode' in df.columns:
+                        # Set the values in data.mode to blank ('')
+                        df['data.mode'] = ''
+                else:
+                    df['data.mode_str'] = df['data.mode'].apply(
+                        lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
+                    )
             esdsq.store_dashboard_time(
                 "admin/db_utils/query_trajectories/add_mode_string",
                 stage5_timer
@@ -424,78 +430,101 @@ def query_trajectories(start_date: str, end_date: str, tz: str):
 
 
 
-def add_user_stats(user_data):
+def add_user_stats(user_data, batch_size=5):
+    time_format = 'YYYY-MM-DD HH:mm:ss'
     with ect.Timer() as total_timer:
-
-        for user in user_data:
-            user_uuid = UUID(user['user_id'])
-
-            # Stage 1: Count total trips
-            # with ect.Timer() as stage1_timer:
-            #     total_trips = esta.TimeSeries.get_aggregate_time_series().find_entries_count(
-            #         key_list=["analysis/confirmed_trip"],
-            #         extra_query_list=[{'user_id': user_uuid}]
-            #     )
-            #     user['total_trips'] = total_trips
-            # esdsq.store_dashboard_time(
-            #     "admin/db_utils/add_user_stats/count_total_trips",
-            #     stage1_timer
-            # )
-
-            # # Stage 2: Count labeled trips
-            # with ect.Timer() as stage2_timer:
-            #     labeled_trips = esta.TimeSeries.get_aggregate_time_series().find_entries_count(
-            #         key_list=["analysis/confirmed_trip"],
-            #         extra_query_list=[{'user_id': user_uuid}, {'data.user_input': {'$ne': {}}}]
-            #     )
-            #     user['labeled_trips'] = labeled_trips
-            # esdsq.store_dashboard_time(
-            #     "admin/db_utils/add_user_stats/count_labeled_trips",
-            #     stage2_timer
-            # )
-
-            # Stage 3: Retrieve user profile data
-            with ect.Timer() as stage3_timer:
-                # Fetch the user's profile data from the database
+        # Stage 1: Define process_user
+        def process_user(user):
+            with ect.Timer() as process_user_timer:
+                user_uuid = UUID(user['user_id'])
                 profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
-                
-                # Assign existing profile attributes to the user dictionary
-                user['platform'] = profile_data.get('curr_platform')
-                user['manufacturer'] = profile_data.get('manufacturer')
-                user['app_version'] = profile_data.get('client_app_version')
-                user['os_version'] = profile_data.get('client_os_version')
-                user['phone_lang'] = profile_data.get('phone_lang')
-                
-                # **Retrieve and Assign New User Statistics**
-                # Pipeline Range
-                pipeline_range = profile_data.get('pipeline_range', {})
-                user['pipeline_start_ts'] = pipeline_range.get('start_ts')
-                user['pipeline_end_ts'] = pipeline_range.get('end_ts')
-                
-                # Trip Counts
-                user['total_trips'] = profile_data.get('total_trips', 0)
-                user['labeled_trips'] = profile_data.get('labeled_trips', 0)
-                
-                # Last API Call Timestamp
-                user['last_call'] = profile_data.get('last_call')
-                # Optional: Format the last_call timestamp if needed
-                # For example, if we want to display it in a human-readable format
-                if user['last_call']:
-                    user['formatted_last_call'] = arrow.get(user['last_call']).format('YYYY-MM-DD HH:mm:ss')
+                # Fetch data for the user, cached for repeated queries
+                if profile_data:
+                    # Assign existing profile attributes to the user dictionary
+                    user['platform'] = profile_data.get('curr_platform')
+                    user['manufacturer'] = profile_data.get('manufacturer')
+                    user['app_version'] = profile_data.get('client_app_version')
+                    user['os_version'] = profile_data.get('client_os_version')
+                    user['phone_lang'] = profile_data.get('phone_lang')
+                    
+                    # Assign newly stored statistics to the user dictionary
+                    user['total_trips'] = profile_data.get('total_trips', 0)
+                    user['labeled_trips'] = profile_data.get('labeled_trips', 0)
+                    
+                    # Retrieve and assign pipeline range
+                    pipeline_range = profile_data.get('pipeline_range', {})
+                    user['pipeline_start_ts'] = pipeline_range.get('start_ts')
+                    user['pipeline_end_ts'] = pipeline_range.get('end_ts')
+                    
+                    # Retrieve and assign last API call timestamp
+                    user['last_call'] = profile_data.get('last_call')
+                    
+                    # Optional: Format the last_call timestamp for readability
+                    if user['last_call']:
+                        user['formatted_last_call'] = arrow.get(user['last_call']).format('YYYY-MM-DD HH:mm:ss')
+                    else:
+                        user['formatted_last_call'] = None
                 else:
+                    # Handle cases where profile_data is not found
+                    logging.warning(f"No profile data found for user_uuid: {user_uuid}")
+                    
+                    # Assign default values to ensure the user dictionary remains consistent
+                    user['platform'] = None
+                    user['manufacturer'] = None
+                    user['app_version'] = None
+                    user['os_version'] = None
+                    user['phone_lang'] = None
+                    user['total_trips'] = 0
+                    user['labeled_trips'] = 0
+                    user['pipeline_start_ts'] = None
+                    user['pipeline_end_ts'] = None
+                    user['last_call'] = None
                     user['formatted_last_call'] = None
-
+                
             esdsq.store_dashboard_time(
-                "admin/db_utils/add_user_stats/retrieve_user_profile_data",
-                stage3_timer
+                "admin/db_utils/add_user_stats/process_user",
+                process_user_timer
             )
+            return user
 
+        def batch_process(users_batch):
+            with ect.Timer() as batch_process_timer:
+                with ThreadPoolExecutor() as executor:  # Adjust max_workers based on CPU cores
+                    futures = [executor.submit(process_user, user) for user in users_batch]
+                    processed_batch = [future.result() for future in as_completed(futures)]
+            esdsq.store_dashboard_time(
+                "admin/db_utils/add_user_stats/get_last_trip_timestamp",
+                batch_process_timer
+            )
+            return processed_batch
+
+        
+        # Stage 3: Process batches
+        with ect.Timer() as stage3_timer:
+            total_users = len(user_data)
+            processed_data = []
+        
+            for i in range(0, total_users, batch_size):
+                with ect.Timer() as stage_loop_timer:
+                    batch = user_data[i:i + batch_size]
+                    processed_batch = batch_process(batch)
+                    processed_data.extend(processed_batch)
+        
+                    logging.debug(f'Processed {len(processed_data)} users out of {total_users}')
+                esdsq.store_dashboard_time(
+                    "admin/db_utils/add_user_stats/processing_loop_stage",
+                    stage_loop_timer
+                )
+        esdsq.store_dashboard_time(
+            "admin/db_utils/add_user_stats/process_batches",
+            stage3_timer
+        )
     esdsq.store_dashboard_time(
         "admin/db_utils/add_user_stats/total_time",
         total_timer
     )
+    return processed_data
 
-    return user_data
 
 def query_segments_crossing_endpoints(poly_region_start, poly_region_end, start_date: str, end_date: str, tz: str, excluded_uuids: list[str]):
     with ect.Timer() as total_timer:
