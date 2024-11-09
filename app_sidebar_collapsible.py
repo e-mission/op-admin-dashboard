@@ -211,14 +211,27 @@ def make_controls():
   )
 
 page_content = dcc.Loading(
+    id='global-loading',
     type='default',
     fullscreen=True,
+    overlay_style={"visibility": "visible", "filter": "opacity(0.5)"},
+    style={"background-color": "transparent"},
     children=html.Div(dash.page_container, style={
         "margin-left": "5rem",
         "margin-right": "2rem",
         "padding": "2rem 1rem",
     })
 )
+
+
+@app.callback(
+    Output('global-loading', 'display'),
+    Input('interval-load-more', 'disabled'),
+)
+def hide_spinner_while_loading_batch(interval_disabled):
+    if interval_disabled:
+        return 'auto'
+    return 'hide'
 
 
 def make_home_page(): return [
