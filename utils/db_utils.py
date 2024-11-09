@@ -467,19 +467,7 @@ def add_user_stats(user_data, batch_size=5):
                 else:
                     # Handle cases where profile_data is not found
                     logging.warning(f"No profile data found for user_uuid: {user_uuid}")
-                    
-                    # Assign default values to ensure the user dictionary remains consistent
-                    user['platform'] = None
-                    user['manufacturer'] = None
-                    user['app_version'] = None
-                    user['os_version'] = None
-                    user['phone_lang'] = None
-                    user['total_trips'] = 0
-                    user['labeled_trips'] = 0
-                    user['pipeline_start_ts'] = None
-                    user['pipeline_end_ts'] = None
-                    user['last_call'] = None
-                    user['formatted_last_call'] = None
+                    profile_data = {}
                 
             esdsq.store_dashboard_time(
                 "admin/db_utils/add_user_stats/process_user",
