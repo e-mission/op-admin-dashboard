@@ -437,57 +437,35 @@ def add_user_stats(user_data, batch_size=5):
         def process_user(user):
             with ect.Timer() as process_user_timer:
                 user_uuid = UUID(user['user_id'])
-                
-                # Fetch aggregated data for all users once and cache it
-                ts_aggregate = esta.TimeSeries.get_aggregate_time_series()
-    
-                # Fetch data for the user, cached for repeated queries
                 profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
+                # Fetch data for the user, cached for repeated queries
+                if not profile_data:
+                    profile_data = {}
+                # Assign existing profile attributes to the user dictionary
+                user['platform'] = profile_data.get('curr_platform')
+                user['manufacturer'] = profile_data.get('manufacturer')
+                user['app_version'] = profile_data.get('client_app_version')
+                user['os_version'] = profile_data.get('client_os_version')
+                user['phone_lang'] = profile_data.get('phone_lang')
+
                 
-                total_trips = ts_aggregate.find_entries_count(
-                    key_list=["analysis/confirmed_trip"],
-                    extra_query_list=[{'user_id': user_uuid}]
-                )
-                labeled_trips = ts_aggregate.find_entries_count(
-                    key_list=["analysis/confirmed_trip"],
-                    extra_query_list=[{'user_id': user_uuid}, {'data.user_input': {'$ne': {}}}]
-                )
+                # Assign newly stored statistics to the user dictionary
+                user['total_trips'] = profile_data.get('total_trips', 0)
+                user['labeled_trips'] = profile_data.get('labeled_trips', 0)
                 
-                user['total_trips'] = total_trips
-                user['labeled_trips'] = labeled_trips
-    
-                if profile_data:
-                    user['platform'] = profile_data.get('curr_platform')
-                    user['manufacturer'] = profile_data.get('manufacturer')
-                    user['app_version'] = profile_data.get('client_app_version')
-                    user['os_version'] = profile_data.get('client_os_version')
-                    user['phone_lang'] = profile_data.get('phone_lang')
-    
-                if total_trips > 0:
-                    ts = esta.TimeSeries.get_time_series(user_uuid)
-                    first_trip_ts = ts.get_first_value_for_field(
-                        key='analysis/confirmed_trip',
-                        field='data.end_ts',
-                        sort_order=pymongo.ASCENDING
-                    )
-                    if first_trip_ts != -1:
-                        user['first_trip'] = arrow.get(first_trip_ts).format(time_format)
-    
-                    last_trip_ts = ts.get_first_value_for_field(
-                        key='analysis/confirmed_trip',
-                        field='data.end_ts',
-                        sort_order=pymongo.DESCENDING
-                    )
-                    if last_trip_ts != -1:
-                        user['last_trip'] = arrow.get(last_trip_ts).format(time_format)
-    
-                    last_call_ts = ts.get_first_value_for_field(
-                        key='stats/server_api_time',
-                        field='data.ts',
-                        sort_order=pymongo.DESCENDING
-                    )
-                    if last_call_ts != -1:
-                        user['last_call'] = arrow.get(last_call_ts).format(time_format)
+                # Retrieve and assign pipeline range
+                pipeline_range = profile_data.get('pipeline_range', {})
+                user['pipeline_start_ts'] = pipeline_range.get('start_ts')
+                user['pipeline_end_ts'] = pipeline_range.get('end_ts')
+                
+                # Retrieve and assign last API call timestamp
+                user['last_call'] = profile_data.get('last_call')
+                
+                # Optional: Format the last_call timestamp for readability
+                if user['last_call']:
+                    user['formatted_last_call'] = arrow.get(user['last_call']).format('YYYY-MM-DD HH:mm:ss')
+                else:
+                    user['formatted_last_call'] = None
                 
             esdsq.store_dashboard_time(
                 "admin/db_utils/add_user_stats/process_user",
