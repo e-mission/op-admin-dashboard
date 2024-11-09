@@ -439,36 +439,33 @@ def add_user_stats(user_data, batch_size=5):
                 user_uuid = UUID(user['user_id'])
                 profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
                 # Fetch data for the user, cached for repeated queries
-                if profile_data:
-                    # Assign existing profile attributes to the user dictionary
-                    user['platform'] = profile_data.get('curr_platform')
-                    user['manufacturer'] = profile_data.get('manufacturer')
-                    user['app_version'] = profile_data.get('client_app_version')
-                    user['os_version'] = profile_data.get('client_os_version')
-                    user['phone_lang'] = profile_data.get('phone_lang')
-
-                    
-                    # Assign newly stored statistics to the user dictionary
-                    user['total_trips'] = profile_data.get('total_trips', 0)
-                    user['labeled_trips'] = profile_data.get('labeled_trips', 0)
-                    
-                    # Retrieve and assign pipeline range
-                    pipeline_range = profile_data.get('pipeline_range', {})
-                    user['pipeline_start_ts'] = pipeline_range.get('start_ts')
-                    user['pipeline_end_ts'] = pipeline_range.get('end_ts')
-                    
-                    # Retrieve and assign last API call timestamp
-                    user['last_call'] = profile_data.get('last_call')
-                    
-                    # Optional: Format the last_call timestamp for readability
-                    if user['last_call']:
-                        user['formatted_last_call'] = arrow.get(user['last_call']).format('YYYY-MM-DD HH:mm:ss')
-                    else:
-                        user['formatted_last_call'] = None
-                else:
-                    # Handle cases where profile_data is not found
-                    logging.warning(f"No profile data found for user_uuid: {user_uuid}")
+                if not profile_data:
                     profile_data = {}
+                # Assign existing profile attributes to the user dictionary
+                user['platform'] = profile_data.get('curr_platform')
+                user['manufacturer'] = profile_data.get('manufacturer')
+                user['app_version'] = profile_data.get('client_app_version')
+                user['os_version'] = profile_data.get('client_os_version')
+                user['phone_lang'] = profile_data.get('phone_lang')
+
+                
+                # Assign newly stored statistics to the user dictionary
+                user['total_trips'] = profile_data.get('total_trips', 0)
+                user['labeled_trips'] = profile_data.get('labeled_trips', 0)
+                
+                # Retrieve and assign pipeline range
+                pipeline_range = profile_data.get('pipeline_range', {})
+                user['pipeline_start_ts'] = pipeline_range.get('start_ts')
+                user['pipeline_end_ts'] = pipeline_range.get('end_ts')
+                
+                # Retrieve and assign last API call timestamp
+                user['last_call'] = profile_data.get('last_call')
+                
+                # Optional: Format the last_call timestamp for readability
+                if user['last_call']:
+                    user['formatted_last_call'] = arrow.get(user['last_call']).format('YYYY-MM-DD HH:mm:ss')
+                else:
+                    user['formatted_last_call'] = None
                 
             esdsq.store_dashboard_time(
                 "admin/db_utils/add_user_stats/process_user",
