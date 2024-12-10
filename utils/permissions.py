@@ -93,7 +93,7 @@ def get_allowed_trip_columns():
 
 
 def get_uuids_columns():
-    columns = set(constants.valid_uuids_columns)
+    columns = set(constants.VALID_UUIDS_COLS)
     for column in permissions.get("data_uuids_columns_exclude", []):
         columns.discard(column)
     return columns
