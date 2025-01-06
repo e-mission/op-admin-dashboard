@@ -21,4 +21,5 @@ dash-leaflet==1.0.7
 diskcache>=5.2.1
 multiprocess>=0.70.12
 psutil>=5.8.0
+dash-ag-grid>=31.3.0
 dash-iconify>=0.1.2

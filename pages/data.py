@@ -3,7 +3,8 @@ Note that the callback will trigger even if prevent_initial_call=True. This is b
 Since the dcc.Location component is not in the layout when navigating to this page, it triggers the callback.
 The workaround is to check if the input value is None.
 """
-from dash import dcc, html, Input, Output, callback, register_page, dash_table, State, set_props
+from dash import dcc, html, Input, Output, callback, register_page, State, set_props
+import dash_ag_grid as dag
 # Etc
 import logging
 import pandas as pd
@@ -129,17 +130,6 @@ def show_keylist_switch(tab):
     if tab == 'tab-trajectories-datatable':
         return {'display': 'block'} 
     return {'display': 'none'}  # Hide the keylist-switch on all other tabs
-
-
-@callback(
-    Output('uuids-page-current', 'data'),
-    Input('uuid-table', 'page_current'),
-    State('tabs-datatable', 'value')
-)
-def update_uuids_page_current(page_current, selected_tab):
-    if selected_tab == 'tab-uuids-datatable':
-        return page_current
-    raise PreventUpdate
 
 
 @callback(
@@ -463,25 +453,17 @@ def populate_datatable(df, store_uuids, table_id=''):
 
         # Stage 2: Create the DataTable from the DataFrame
         with ect.Timer() as stage2_timer:
-            result = dash_table.DataTable(
+            result = dag.AgGrid(
                 id=table_id,
-                # columns=[{"name": i, "id": i} for i in df.columns],
-                data=df.to_dict('records'),
-                export_format="csv",
-                filter_options={"case": "sensitive"},
-                # filter_action="native",
-                sort_action="native",  # give user capability to sort columns
-                sort_mode="single",  # sort across 'multi' or 'single' columns
-                page_current=page_current,  # set to current page
-                page_size=50,  # number of rows visible per page
-                style_cell={
-                    'textAlign': 'left',
-                    # 'minWidth': '100px',
-                    # 'width': '100px',
-                    # 'maxWidth': '100px',
+                rowData=df.to_dict('records'),
+                columnDefs=[{"field": i, "headerName": i} for i in df.columns],
+                dashGridOptions={"pagination": True, "enableCellTextSelection": True,},
+                columnSize="autoSize",
+                defaultColDef={ "sortable": True, "filter": True },
+                style={
+                    "--ag-font-family": "monospace",
+                    "height": "600px"
                 },
-                style_table={'overflowX': 'auto'},
-                css=[{"selector": ".show-hide", "rule": "display:none"}]
             )
         esdsq.store_dashboard_time(
             "admin/data/populate_datatable/create_datatable",
