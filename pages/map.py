@@ -221,7 +221,11 @@ layout = html.Div(
             dbc.Col(
                 [
                     html.Label('Map Type'),
-                    dcc.Dropdown(id='map-type-dropdown', value='', options=map_type_options),
+                    dcc.Dropdown(
+                        id='map-type-dropdown',
+                        options=map_type_options,
+                        value=map_type_options[0]['value'],
+                    ),
                 ],
                 xl=3,
                 lg=4,
