@@ -218,7 +218,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                         df = df.drop(columns=[col for col in df.columns if col not in columns])
                         logging.debug(f"Callback - {selected_tab} Stage 5: Returning appended data to update the UI.")
                         content = html.Div([
-                            populate_datatable(df, table_id='uuid-table', page_current=current_page),  # Pass current_page
+                            populate_datatable(df, store_uuids, table_id='uuid-table'),  # Pass current_page
                             html.P(
                                 f"Showing {len(loaded_uuids)} of {len(store_uuids['data'])} UUIDs." +
                                 (f" Loading {initial_batch_size} more..." if len(loaded_uuids) < len(store_uuids['data']) else ""),
@@ -251,7 +251,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                     df = df.drop(columns=[col for col in df.columns if col not in columns])
                     df = clean_location_data(df)
 
-                    trips_table = populate_datatable(df, table_id='trips-datatable')
+                    trips_table = populate_datatable(df, store_uuids, table_id='trips-datatable')
 
                     content = html.Div([
                         html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
@@ -278,7 +278,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                     if df.empty:
                         content = None
                     else:
-                        content = populate_datatable(df)
+                        content = populate_datatable(df, store_uuids)
                 elif len(data) > 1:
                     if not has_perm:
                         content = None
@@ -319,7 +319,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                     else:
                         df = df.drop(columns=[col for col in df.columns if col not in columns])
 
-                        datatable = populate_datatable(df)
+                        datatable = populate_datatable(df, store_uuids)
 
                         content = datatable
                 else:
@@ -349,8 +349,9 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
     Output('subtabs-demographics-content', 'children'),
     Input('subtabs-demographics', 'value'),
     Input('store-demographics', 'data'),
+    Input('store-uuids', 'data')
 )
-def update_sub_tab(tab, store_demographics):
+def update_sub_tab(tab, store_demographics, store_uuids):
     with ect.Timer() as total_timer:
 
         # Stage 1: Retrieve and process data for the selected subtab
@@ -393,7 +394,7 @@ def update_sub_tab(tab, store_demographics):
 
         # Stage 4: Populate the datatable with the cleaned DataFrame
         with ect.Timer() as stage4_timer:
-            result = populate_datatable(df)
+            result = populate_datatable(df, store_uuids)
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/populate_datatable",
             stage4_timer
@@ -440,8 +441,7 @@ def update_dropdowns_trips(n_clicks, button_label):
     return hidden_col, button_label
 
 
-
-def populate_datatable(df, table_id='', page_current=0):
+def populate_datatable(df, store_uuids, table_id=''):
     with ect.Timer() as total_timer:
 
         # Stage 1: Check if df is a DataFrame and raise PreventUpdate if not
@@ -452,6 +452,14 @@ def populate_datatable(df, table_id='', page_current=0):
             "admin/data/populate_datatable/check_dataframe_type",
             stage1_timer
         )
+
+        if 'user_token' not in df.columns:
+            uuids_df = pd.DataFrame(store_uuids['data'])
+            df.insert(
+                uuids_df.columns.get_loc('user_id'),
+                'user_token',
+                df['user_id'].map(uuids_df.set_index('user_id')['user_token'])
+            )
 
         # Stage 2: Create the DataTable from the DataFrame
         with ect.Timer() as stage2_timer:
