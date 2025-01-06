@@ -390,6 +390,7 @@ extra_csp_url = [
     "https://*.tile.openstreetmap.org",
     "https://cdn.jsdelivr.net",
     "https://use.fontawesome.com",
+    "https://api.iconify.design",
     "https://www.nrel.gov",
     "data:",
     "blob:"
