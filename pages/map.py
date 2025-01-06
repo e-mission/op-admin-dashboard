@@ -8,9 +8,11 @@ from uuid import UUID
 
 from dash import dcc, html, Input, Output, State, callback, register_page
 import dash_bootstrap_components as dbc
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import random
+import logging
 
 import emission.core.wrapper.user as ecwu
 import emission.core.get_database as edb
@@ -23,17 +25,13 @@ register_page(__name__, path="/map")
 intro = """## Map"""
 
 
-def create_lines_map(trips_group_by_user_id, user_id_list):
-    start_lon, start_lat = 0, 0
+def create_lines_map(coordinates, trips_group_by_user_id, user_id_list):
     traces = []
     for user_id in user_id_list:
         color = trips_group_by_user_id[user_id]['color']
         trips = trips_group_by_user_id[user_id]['trips']
 
-        for i, trip in enumerate(trips):
-            if i == 0:
-                start_lon = trip['start_coordinates'][0]
-                start_lat = trip['start_coordinates'][1]
+        for trip in trips:
             traces.append(
                 go.Scattermapbox(
                     mode="markers+lines",
@@ -44,13 +42,14 @@ def create_lines_map(trips_group_by_user_id, user_id_list):
             )
 
     fig = go.Figure(data=traces)
+    (zoom, center) = get_mapbox_zoom_and_center(coordinates)
     fig.update_layout(
         showlegend=False,
         margin={'l': 0, 't': 30, 'b': 0, 'r': 0},
         mapbox_style="open-street-map",
-        mapbox_center_lon=start_lon,
-        mapbox_center_lat=start_lat,
-        mapbox_zoom=11,
+        mapbox_center_lon=center[0],
+        mapbox_center_lat=center[1],
+        mapbox_zoom=zoom,
         height=650,
     )
 
@@ -59,16 +58,15 @@ def create_lines_map(trips_group_by_user_id, user_id_list):
 
 def get_map_coordinates(trips_group_by_user_mode, user_mode_list):
     coordinates = {'lat': [], 'lon': [], 'color':[]}
-    for user_mode in user_mode_list:
-        color = trips_group_by_user_mode[user_mode]['color']
-        trips = trips_group_by_user_mode[user_mode]['trips']
-
-        for trip in trips:
+    for user_mode, group in trips_group_by_user_mode.items():
+        if user_mode_list and user_mode not in user_mode_list:
+            continue
+        for trip in group['trips']:
             coordinates['lon'].append(trip['start_coordinates'][0])
             coordinates['lon'].append(trip['end_coordinates'][0])
             coordinates['lat'].append(trip['start_coordinates'][1])
             coordinates['lat'].append(trip['end_coordinates'][1])
-            coordinates['color'].extend([color,color])
+            coordinates['color'].extend([group['color'], group['color']])
     return coordinates
 
 
@@ -83,15 +81,35 @@ def create_heatmap_fig(coordinates):
                 
             )
         )
+        (zoom, center) = get_mapbox_zoom_and_center(coordinates)
         fig.update_layout(
             mapbox_style='open-street-map',
-            mapbox_center_lon=coordinates['lon'][0],
-            mapbox_center_lat=coordinates['lat'][0],
-            mapbox_zoom=11,
+            mapbox_center_lon=center[0],
+            mapbox_center_lat=center[1],
+            mapbox_zoom=zoom,
             margin={"r": 0, "t": 30, "l": 0, "b": 0},
             height=650,
         )
     return fig
+
+
+# derived from https://community.plotly.com/t/dynamic-zoom-for-mapbox/32658/12
+# workaround until dash team implements dynamic zoom on mapbox Scattermapbox and Densitymapbox
+def get_mapbox_zoom_and_center(coords):
+    if (not coords.get('lon') or not coords.get('lat') or len(coords['lon']) != len(coords['lat'])):
+        logging.error("Invalid input to get_mapbox_zoom_and_center, coords: " + str(coords))
+        return 0, (0, 0)
+
+    min_lonlat = (min(coords['lon']), min(coords['lat']))
+    max_lonlat = (max(coords['lon']), max(coords['lat']))
+    midpoint = (min_lonlat[0] + max_lonlat[0]) / 2, (min_lonlat[1] + max_lonlat[1]) / 2
+    area = (max_lonlat[0] - min_lonlat[0]) * (max_lonlat[1] - min_lonlat[1])
+    zoom = np.interp(x=area,
+                      xp=[0, 5**-10, 4**-10, 3**-10, 2**-10, 1**-10, 1**-5],
+                      fp=[20, 15,    14,     13,     12,     7,      5])
+    zoom = int(min(15, zoom))
+    logging.debug("zoom: " + str(zoom) + " midpoint: " + str(midpoint))
+    return zoom, midpoint
 
 
 def create_bubble_fig(coordinates):
@@ -108,12 +126,13 @@ def create_bubble_fig(coordinates):
                 ),
             )
         )
+        (zoom, center) = get_mapbox_zoom_and_center(coordinates)
         fig.update_layout(
             autosize=True,
             mapbox_style='open-street-map',
-            mapbox_center_lon=coordinates['lon'][0],
-            mapbox_center_lat=coordinates['lat'][0],
-            mapbox_zoom=11,
+            mapbox_center_lon=center[0],
+            mapbox_center_lat=center[1],
+            mapbox_zoom=zoom,
             mapbox_bearing=0,
             margin={'r': 0, 't': 30, 'l': 0, 'b': 0},
             height=650,
