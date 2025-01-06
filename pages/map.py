@@ -151,10 +151,10 @@ def get_trips_group_by_user_mode(trips_data):
     trips_group_by_user_mode = None
     trips_df = pd.DataFrame(trips_data.get('data'))
     if not trips_df.empty:
-        if 'data.user_input.mode_confirm' not in trips_df.columns:
-            trips_df['data.user_input.mode_confirm'] = None
-        trips_df['data.user_input.mode_confirm'] = trips_df['data.user_input.mode_confirm'].fillna('Unlabeled')
-        trips_group_by_user_mode = trips_df.groupby('data.user_input.mode_confirm')
+        if 'mode_confirm' not in trips_df.columns:
+            trips_df['mode_confirm'] = None
+        trips_df['mode_confirm'] = trips_df['mode_confirm'].fillna('Unlabeled')
+        trips_group_by_user_mode = trips_df.groupby('mode_confirm')
     return trips_group_by_user_mode
 
 def create_single_option(value, color):
