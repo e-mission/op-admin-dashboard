@@ -6,8 +6,9 @@ workaround is to check if the input value is None.
 """
 from uuid import UUID
 
-from dash import dcc, html, Input, Output, State, callback, register_page
+from dash import dcc, html, Input, Output, ALL, callback, register_page
 import dash_bootstrap_components as dbc
+from dash_iconify import DashIconify
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -16,7 +17,7 @@ import logging
 
 import emission.core.wrapper.user as ecwu
 import emission.core.get_database as edb
-import logging
+import emcommon.diary.base_modes as emcdb
 
 from utils.permissions import has_permission
 
@@ -157,51 +158,48 @@ def get_trips_group_by_user_mode(trips_data):
         trips_group_by_user_mode = trips_df.groupby('mode_confirm')
     return trips_group_by_user_mode
 
-def create_single_option(value, color):
+def create_single_option(value, color, label=None, icon=None):
+    if icon:
+        square = DashIconify(icon=f"mdi:{icon}", style={'margin': 'auto', 'color': color})
+    else:
+        square = html.Div(style={'background-color': color,
+                                 'width': 10,
+                                 'height': 10,
+                                 'margin': 'auto'})
+    
+    text = html.Span(label or value,
+                     style={'font': '14px monospace',
+                            'color': color if color and icon else 'unset',
+                            'maxHeight': 60,
+                            'overflow': 'hidden'})
     return {
-        'label': html.Span(
-            [
-                html.Div(id='dropdown-squares', style={'background-color': color}),
-                html.Span(value, style={'font-size': 15, 'padding-left': 10})
-            ], style={'display': 'flex', 'align-items': 'center', 'justify-content': 'center'}
-        ),
-        'value': value
+        'label': html.Span([square, text], style={'display': 'flex', 'gap': 5}),
+        'value': value,
     }
 
-def create_user_ids_options(trips_group_by_user_id):
+def create_users_dropdown_options(trips_group_by_user_id, uuids_perm, tokens_perm):
     options = list()
     user_ids = set()
-    if has_permission('options_uuids'):
-        for user_id in trips_group_by_user_id:
-            color = trips_group_by_user_id[user_id]['color']
-            user_ids.add(user_id)
-            options.append(create_single_option(user_id, color))
-    return options, user_ids
+    for user_id in trips_group_by_user_id:
+        color = trips_group_by_user_id[user_id]['color']
+        if tokens_perm:
+            token = ecwu.User.fromUUID(UUID(user_id))._User__email
+            label = f"{token}\n({user_id})" if uuids_perm else token
+        else:
+            label = user_id if uuids_perm else ''
+        user_ids.add(user_id)
+        options.append(create_single_option(user_id, color, label=label))
+    return options
 
-def create_user_emails_options(trips_group_by_user_id):
+def create_modes_dropdown_options(trips_group_by_user_mode):
     options = list()
-    user_emails = set()
-    if has_permission('options_emails'):
-        for i, user_id in enumerate(trips_group_by_user_id):
-            color = trips_group_by_user_id[user_id]['color']
-            logging.warn("dict is %s" % ecwu.User.fromUUID(UUID(user_id)).__dict__)
-            logging.warn("all users are %s" % list(edb.get_uuid_db().find()))
-            try:
-                user_email = ecwu.User.fromUUID(UUID(user_id))._User__email
-            except AttributeError as e:
-                continue
-            user_emails.add(user_email)
-            options.append(create_single_option(user_email, color))
-    return options, user_emails
-
-def create_user_modes_options(trips_group_by_user_mode):
-    options = list()
-    user_modes = set()
-    for user_mode in trips_group_by_user_mode:
-        color = trips_group_by_user_mode[user_mode]['color']
-        user_modes.add(user_mode)
-        options.append(create_single_option(user_mode, color))
-    return options, user_modes
+    for mode in trips_group_by_user_mode:
+        options.append(
+            create_single_option(mode,
+                                 trips_group_by_user_mode[mode]['color'],
+                                 icon=trips_group_by_user_mode[mode]['icon'])
+        )
+    return options
 
 map_type_options = []
 if has_permission('map_heatmap'):
@@ -227,93 +225,81 @@ layout = html.Div(
                         value=map_type_options[0]['value'],
                     ),
                 ],
-                xl=3,
-                lg=4,
-                sm=6,
+                xl=3, lg=4, sm=6,
             )
         ]),
-
-        dbc.Row([
-            dbc.Col([
-                html.Label('User UUIDs'),
-                dcc.Dropdown(id='user-id-dropdown', multi=True),
-            ], style={'display': 'block' if has_permission('options_uuids') else 'none'}),
-            dbc.Col([
-                html.Label('User Emails'),
-                dcc.Dropdown(id='user-email-dropdown', multi=True),
-            ], style={'display': 'block' if has_permission('options_emails') else 'none'}),
-            dbc.Col([
-                html.Label('Modes'),
-                dcc.Dropdown(id='user-mode-dropdown', multi=True),
-            ], style={'display': 'block'})
-        ]),
+        dbc.Row(id='map-filters-row'),
         dbc.Row(id="trip-map-row")
+    ],
+    style={'display': 'flex', 'flex-direction': 'column', 'gap': 8}
+)
+
+@callback(
+    Output('map-filters-row', 'children'),
+    Input('map-type-dropdown', 'value'),
+    Input('store-trips-map', 'data'),
+)
+def create_filters_dropdowns(map_type, trips_data):
+    filters = []
+
+    modes_options = create_modes_dropdown_options(
+        trips_data['users_data_by_user_mode'],
+    )
+    filters.append(('Modes', 'modes', modes_options))
+
+    uuids_perm, tokens_perm = has_permission('options_uuids'), has_permission('options_tokens')
+    if map_type == 'lines' and (uuids_perm or tokens_perm):
+        users_options = create_users_dropdown_options(
+            trips_data['users_data_by_user_id'],
+            uuids_perm,
+            tokens_perm,
+        )
+        filters.append(('Users', 'users', users_options))
+
+    return [
+        dbc.Col(
+            [
+                html.Label(label),
+                dcc.Dropdown(
+                    id={'type': 'map-filter-dropdown', 'id': id},
+                    options=options,
+                    multi=True,
+                    disabled=len(options) == 0,
+                    optionHeight=(60 if id == 'users' else 35),
+                )
+            ],
+            lg=4, sm=6,
+        )
+        for label, id, options in filters
     ]
-)
 
-@callback(
-    Output('user-id-dropdown', 'options'),
-    Output('user-id-dropdown', 'value'),
-    Input('store-trips-map', 'data'),
-    Input('user-id-dropdown', 'value'),
-)
-def update_user_ids_options(trips_data, selected_user_ids):
-    user_ids_options, user_ids = create_user_ids_options(trips_data['users_data_by_user_id'])
-    if selected_user_ids is not None:
-        selected_user_ids = [user_id for user_id in selected_user_ids if user_id in user_ids]
-    return user_ids_options, selected_user_ids
-
-
-@callback(
-    Output('user-email-dropdown', 'options'),
-    Output('user-email-dropdown', 'value'),
-    Input('store-trips-map', 'data'),
-    Input('user-email-dropdown', 'value'),
-)
-def update_user_emails_options(trips_data, selected_user_emails):
-    user_emails_options, user_emails = create_user_emails_options(trips_data['users_data_by_user_id'])
-    if selected_user_emails is not None:
-        selected_user_emails = [user_email for user_email in selected_user_emails if user_email in user_emails]
-    return user_emails_options, selected_user_emails
-
-@callback(
-    Output('user-mode-dropdown', 'options'),
-    Output('user-mode-dropdown', 'value'),
-    Output('user-mode-dropdown', 'disabled'),
-    Input('store-trips-map', 'data'),
-    Input('user-mode-dropdown', 'value'),
-)
-def update_user_modes_options(trips_data, selected_user_modes):
-    user_modes_options, user_modes = create_user_modes_options(trips_data['users_data_by_user_mode'])
-    if selected_user_modes is not None:
-        selected_user_modes = [mode_confirm for mode_confirm in selected_user_modes if mode_confirm in user_modes]
-    
-    # Disable the 'mode' button if no user_modes_options have 0 values
-    return user_modes_options, selected_user_modes, len(user_modes_options) == 0
 
 @callback(
     Output('trip-map-row', 'children'),
     Input('map-type-dropdown', 'value'),
-    Input('user-id-dropdown', 'value'),
-    Input('user-email-dropdown', 'value'),
-    Input('user-mode-dropdown', 'value'),
-    State('store-trips-map', 'data'),
+    Input({'type': 'map-filter-dropdown', 'id': ALL}, 'value'),
+    Input('store-trips-map', 'data'),
 )
-def update_output(map_type, selected_user_ids, selected_user_emails, selected_user_modes, trips_data):
-    if not trips_data['users_data_by_user_id'] and not trips_data['users_data_by_user_mode']:
+def update_output(map_type, filter_values, trips_data):
+    if not trips_data.get('users_data_by_user_id') and not trips_data.get('users_data_by_user_mode'):
         return html.Div("No trip data available for the selected date", id="no-trip-text", style={'font-size': 20, 'margin-top': 20})
     fig = None
-    user_ids = set(selected_user_ids) if selected_user_ids is not None else set()
-    user_modes=set(selected_user_modes) if selected_user_modes is not None else set()
-    coordinates = get_map_coordinates(trips_data.get('users_data_by_user_mode', {}), user_modes)
-    if selected_user_emails is not None:
-        for user_email in selected_user_emails:
-            user_ids.add(str(ecwu.User.fromEmail(user_email).uuid))
+    selected_modes = filter_values[0] if len(filter_values) > 0 else None
+    selected_uuids = filter_values[1] if len(filter_values) > 1 else None
+    coordinates = get_map_coordinates(trips_data['users_data_by_user_mode'], selected_modes)
     if map_type == 'lines':
-        if selected_user_modes:
-            fig = create_lines_map(trips_data.get('users_data_by_user_mode', {}), user_modes)
+        if selected_modes:
+            fig = create_lines_map(
+                coordinates,
+                trips_data['users_data_by_user_mode'],
+                selected_modes or [],
+            )
         else:
-            fig = create_lines_map(trips_data.get('users_data_by_user_id', {}), user_ids)
+            fig = create_lines_map(
+                coordinates,
+                trips_data['users_data_by_user_id'],
+                selected_uuids or [],
+            )
     elif map_type == 'heatmap':
         fig = create_heatmap_fig(coordinates)
     elif map_type == 'bubble':
@@ -324,18 +310,11 @@ def update_output(map_type, selected_user_ids, selected_user_emails, selected_us
 
 
 @callback(
-    Output('user-id-dropdown', 'disabled'),
-    Output('user-email-dropdown', 'disabled'),
-    Input('map-type-dropdown', 'value'),
-    Input('user-mode-dropdown', 'value'),
+    Output({'type': 'map-filter-dropdown', 'id': 'users'}, 'disabled'),
+    Input({'type': 'map-filter-dropdown', 'id': 'modes'}, 'value'),
 )
-def control_user_dropdowns(map_type,selected_user_modes):
-    disabled = True
-    if map_type == 'lines':
-        disabled = False
-        if selected_user_modes:
-            disabled = True
-    return disabled, disabled
+def control_user_dropdowns(selected_modes):
+    return bool(selected_modes)
 
 
 def process_trips_group(trips_group):
@@ -355,8 +334,9 @@ def process_trips_group(trips_group):
 @callback(
     Output('store-trips-map', 'data'),
     Input('store-trips', 'data'),
+    Input('store-label-options', 'data'),
 )
-def store_trips_map_data(trips_data):
+def store_trips_map_data(trips_data, label_options):
     if not trips_data['data']:
         return {'users_data_by_user_id': {}, 'users_data_by_user_mode': {}}
     
@@ -365,5 +345,14 @@ def store_trips_map_data(trips_data):
   
     trips_group_by_user_mode = get_trips_group_by_user_mode(trips_data)
     users_data_by_user_mode = process_trips_group(trips_group_by_user_mode)
+    if label_options:
+        rich_modes = [[mode, emcdb.get_rich_mode_for_value(mode, label_options)]
+                      for mode in users_data_by_user_mode]
+        colors = [[mode, rich_mode['color']]
+                  for mode, rich_mode in rich_modes]
+        deduped_colors = emcdb.dedupe_colors(colors, adjustment_range=[0.5,1.5])
+        for i, (mode, trips_group) in enumerate(users_data_by_user_mode.items()):
+            trips_group['icon'] = rich_modes[i][1]['icon']
+            trips_group['color'] = deduped_colors[mode]
 
     return {'users_data_by_user_id':users_data_by_user_id, 'users_data_by_user_mode':users_data_by_user_mode}
