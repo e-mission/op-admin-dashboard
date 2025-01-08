@@ -131,72 +131,20 @@ def compute_trips_trend(trips_df, date_col):
 
 
 
-def find_last_get(uuid_list):
-    with ect.Timer() as total_timer:
-
-        # Stage 1: Convert UUID strings to UUID objects
-        with ect.Timer() as stage1_timer:
-            uuid_list = [UUID(npu) for npu in uuid_list]
-        esdsq.store_dashboard_time(
-            "admin/home/find_last_get/convert_to_uuid_objects",
-            stage1_timer
-        )
-
-        # Stage 2: Query the timeseries database to find the last GET request
-        with ect.Timer() as stage2_timer:
-            last_item = list(edb.get_timeseries_db().aggregate([
-                {'$match': {'user_id': {'$in': uuid_list}}},
-                {'$match': {'metadata.key': 'stats/server_api_time'}},
-                {'$match': {'data.name': 'POST_/usercache/get'}},
-                {'$group': {'_id': '$user_id', 'write_ts': {'$max': '$metadata.write_ts'}}},
-            ]))
-        esdsq.store_dashboard_time(
-            "admin/home/find_last_get/query_timeseries_db",
-            stage2_timer
-        )
-
-    # Store the total time for the entire function
-    esdsq.store_dashboard_time(
-        "admin/home/find_last_get/total_time",
-        total_timer
-    )
-
-    return last_item
-
-
-
 def get_number_of_active_users(uuid_list, threshold):
     with ect.Timer() as total_timer:
-
-        # Stage 1: Find the last GET request entries for the given UUIDs
-        with ect.Timer() as stage1_timer:
-            last_get_entries = find_last_get(uuid_list)
-        esdsq.store_dashboard_time(
-            "admin/home/get_number_of_active_users/find_last_get_entries",
-            stage1_timer
-        )
-
-        # Stage 2: Calculate the number of active users based on the threshold
-        with ect.Timer() as stage2_timer:
-            number_of_active_users = 0
-            for item in last_get_entries:
-                last_get = item['write_ts']
-                if last_get is not None:
-                    last_call_diff = arrow.get().timestamp() - last_get
-                    if last_call_diff <= threshold:
-                        number_of_active_users += 1
-        esdsq.store_dashboard_time(
-            "admin/home/get_number_of_active_users/calculate_active_users",
-            stage2_timer
-        )
-
-    # Store the total time for the entire function
-    esdsq.store_dashboard_time(
-        "admin/home/get_number_of_active_users/total_time",
-        total_timer
-    )
-
+        number_of_active_users = 0
+        current_timestamp = arrow.utcnow().timestamp()
+        for npu in uuid_list:
+            user_uuid = UUID(npu)
+            profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
+            if profile_data:
+                last_call_ts = profile_data.get('last_call_ts')
+                if last_call_ts and (current_timestamp - arrow.get(last_call_ts).timestamp()) <= threshold:
+                    number_of_active_users += 1
+    esdsq.store_dashboard_time("admin/home/get_number_of_active_users/total_time", total_timer)
     return number_of_active_users
+
 
 
 
