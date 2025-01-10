@@ -5,7 +5,7 @@ The workaround is to check if the input value is None.
 
 """
 from uuid import UUID
-from dash import dcc, html, Input, Output, callback, register_page
+from dash import dcc, html, Input, Output, callback, register_page, no_update
 import dash_bootstrap_components as dbc
 
 import plotly.express as px
@@ -22,6 +22,7 @@ from utils.datetime_utils import iso_to_date_only
 import emission.core.timer as ect
 import emission.storage.decorations.stats_queries as esdsq
 
+from utils.ux_utils import wrap_with_skeleton
 register_page(__name__, path="/")
 
 intro = "## Home"
@@ -34,23 +35,35 @@ card_icon = {
 }
 
 layout = html.Div(
-    [
-        dcc.Markdown(intro),
+        [
+            dcc.Markdown(intro),
+            html.Div(id='home-page-load', children='', style={'display': 'none'}),
+            # Cards Section
+            dbc.Row([
+                dbc.Col(
+                    wrap_with_skeleton('users', 100, html.Div(id='card-users'))
+                ),
+                dbc.Col(
+                    wrap_with_skeleton('active-users', 100, html.Div(id='card-active-users'))
+                ),
+                dbc.Col(
+                    wrap_with_skeleton('trips', 100, html.Div(id='card-trips'))
+                ),
+            ], className="mb-4"),  # Add margin-bottom for spacing
 
-        # Cards
-        dbc.Row([
-            dbc.Col(id='card-users'),
-            dbc.Col(id='card-active-users'),
-            dbc.Col(id='card-trips')
-        ]),
+            # Plots Section
+            dbc.Row([
+                dbc.Col(
+                    wrap_with_skeleton('sign-up-trend', 300, dcc.Graph(id="fig-sign-up-trend"))
+                ),
+                dbc.Col(
+                    wrap_with_skeleton('trips-trend', 300, dcc.Graph(id="fig-trips-trend"))
+                ),
+            ]),
+        ],
+        style={"padding": "20px"}  # Optional padding for aesthetics
+    )
 
-        # Plots
-        dbc.Row([
-            dcc.Graph(id="fig-sign-up-trend"),
-            dcc.Graph(id="fig-trips-trend"),
-        ])
-    ]
-)
 
 
 def compute_sign_up_trend(uuid_df):
@@ -233,12 +246,7 @@ def generate_card(title_text, body_text, icon):
 
     return card
 
-
-@callback(
-    Output('card-users', 'children'),
-    Input('store-uuids', 'data'),
-)
-def update_card_users(store_uuids):
+def update_card_users_helper(store_uuids):
     with ect.Timer() as total_timer:
 
         # Stage 1: Calculate number of users based on permission
@@ -265,12 +273,7 @@ def update_card_users(store_uuids):
 
     return card
 
-
-@callback(
-    Output('card-active-users', 'children'),
-    Input('store-uuids', 'data'),
-)
-def update_card_active_users(store_uuids):
+def update_card_active_users_helper(store_uuids):
     with ect.Timer() as total_timer:
 
         # Stage 1: Convert store_uuids data to DataFrame
@@ -308,13 +311,7 @@ def update_card_active_users(store_uuids):
 
     return card
 
-
-
-@callback(
-    Output('card-trips', 'children'),
-    Input('store-trips', 'data'),
-)
-def update_card_trips(store_trips):
+def update_card_trips_helper(store_trips):
     with ect.Timer() as total_timer:
 
         # Stage 1: Calculate number of trips based on permission
@@ -380,12 +377,7 @@ def generate_barplot(data, x, y, title):
     return fig
 
 
-
-@callback(
-    Output('fig-sign-up-trend', 'figure'),
-    Input('store-uuids', 'data'),
-)
-def generate_plot_sign_up_trend(store_uuids):
+def generate_plot_sign_up_trend_helper(store_uuids):
     with ect.Timer() as total_timer:
 
         # Stage 1: Convert store_uuids data to DataFrame
@@ -423,13 +415,7 @@ def generate_plot_sign_up_trend(store_uuids):
     return fig
 
 
-@callback(
-    Output('fig-trips-trend', 'figure'),
-    Input('store-trips', 'data'),
-    Input('date-picker', 'start_date'),  # these are ISO strings
-    Input('date-picker', 'end_date'),  # these are ISO strings
-)
-def generate_plot_trips_trend(store_trips, start_date, end_date):
+def generate_plot_trips_trend_helper(store_trips, start_date, end_date):
     with ect.Timer() as total_timer:
 
         # Stage 1: Convert store_trips data to DataFrame
@@ -474,3 +460,45 @@ def generate_plot_trips_trend(store_trips, start_date, end_date):
 
     return fig
 
+
+@callback(
+    [
+        Output('card-users', 'children'),
+        Output('skeleton-users', 'visible'),
+        Output('card-active-users', 'children'),
+        Output('skeleton-active-users', 'visible'),
+        Output('card-trips', 'children'),
+        Output('skeleton-trips', 'visible'),
+        Output('fig-sign-up-trend', 'figure'),
+        Output('skeleton-sign-up-trend', 'visible'),
+        Output('fig-trips-trend', 'figure'),
+        Output('skeleton-trips-trend', 'visible'),
+    ],
+    [
+        Input('store-uuids', 'data'),
+        Input('store-trips', 'data'),
+        Input('date-picker', 'start_date'),
+        Input('date-picker', 'end_date'),
+        Input('url', 'pathname'),
+        Input('home-page-load', 'children')
+    ]
+)
+def update_all_components(store_uuids, store_trips, start_date, end_date, pathname, _):
+    if pathname != "/":
+        return [no_update] * 10
+
+    # Call helper functions to update each component
+    card_users = update_card_users_helper(store_uuids)
+    card_active_users = update_card_active_users_helper(store_uuids)
+    card_trips = update_card_trips_helper(store_trips)
+    fig_sign_up_trend = generate_plot_sign_up_trend_helper(store_uuids)  # you'll create helper versions as needed
+    fig_trips_trend = generate_plot_trips_trend_helper(store_trips, start_date, end_date)
+
+    # Once all components are updated, hide all skeletons
+    return [
+        card_users, False,             # Hide skeleton-users
+        card_active_users, False,      # Hide skeleton-active-users
+        card_trips, False,             # Hide skeleton-trips
+        fig_sign_up_trend, False,      # Hide skeleton-sign-up-trend
+        fig_trips_trend, False         # Hide skeleton-trips-trend
+    ]
