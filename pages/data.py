@@ -3,7 +3,7 @@ Note that the callback will trigger even if prevent_initial_call=True. This is b
 Since the dcc.Location component is not in the layout when navigating to this page, it triggers the callback.
 The workaround is to check if the input value is None.
 """
-from dash import dcc, html, Input, Output, callback, register_page, State, set_props
+from dash import dcc, html, Input, Output, callback, register_page, State, set_props, dash_table
 import dash_ag_grid as dag
 # Etc
 import logging
@@ -17,6 +17,7 @@ from utils.db_utils import df_to_filtered_records, query_trajectories
 from utils.datetime_utils import iso_to_date_only
 import emission.core.timer as ect
 import emission.storage.decorations.stats_queries as esdsq
+from utils.ux_utils import wrap_with_skeleton
 register_page(__name__, path="/data")
 
 intro = """## Data"""
@@ -24,6 +25,17 @@ intro = """## Data"""
 layout = html.Div(
     [
         dcc.Markdown(intro),
+        html.Div(id='home-page-load', children='', style={'display': 'none'}),
+        html.Div(id='card-users'),
+        html.Div(id='skeleton-users'),
+        html.Div(id='card-active-users'),
+        html.Div(id='skeleton-active-users'),
+        html.Div(id='card-trips'),
+        html.Div(id='skeleton-trips'),
+        html.Div(id='fig-sign-up-trend'),
+        html.Div(id='skeleton-sign-up-trend'),
+        html.Div(id='fig-trips-trend'),
+        html.Div(id='skeleton-trips-trend'),
         dcc.Tabs(id="tabs-datatable", value='tab-uuids-datatable', children=[
             dcc.Tab(label='UUIDs', value='tab-uuids-datatable'),
             dcc.Tab(label='Trips', value='tab-trips-datatable'),
@@ -127,6 +139,8 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
     Input('tabs-datatable', 'value'),
 )
 def show_keylist_switch(tab):
+    if tab is None:
+        raise PreventUpdate
     if tab == 'tab-trajectories-datatable':
         return {'display': 'block'} 
     return {'display': 'none'}  # Hide the keylist-switch on all other tabs
@@ -146,6 +160,10 @@ def show_keylist_switch(tab):
     ],
 )
 def load_uuids_stats(tab, uuids):
+    # Check for None values
+    if tab is None or uuids is None:
+        raise PreventUpdate
+
     logging.debug("loading uuids stats for tab %s" % tab)
     if tab != 'tab-uuids-datatable':
         return
@@ -177,6 +195,12 @@ def load_uuids_stats(tab, uuids):
     Input('loaded-uuids-stats', 'data'),
 )
 def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date, timezone, key_list, current_page, loaded_uuids):
+    # Check for None values
+    inputs = [tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories,
+              start_date, end_date, timezone, key_list, current_page, loaded_uuids]
+    if any(val is None for val in inputs):
+        raise PreventUpdate
+
     with ect.Timer() as total_timer:
         initial_batch_size = 10  # Define the batch size for loading UUIDs
 
@@ -201,7 +225,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                     if df.empty and len(store_uuids['data']) > 0:
                         logging.debug(f"Callback - {selected_tab} loaded_uuids is empty.")
                         content = html.Div(
-                            [dcc.Loading(id='uuids-loading', display='show')],
+                            [wrap_with_skeleton('uuids', 500, html.Div())],
                             style={'margin-top': '36px'}
                         )
                     else:
@@ -234,9 +258,18 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                 has_perm = perm_utils.has_permission('data_trips')
 
                 df = pd.DataFrame(data)
-                if df.empty or not has_perm:
-                    logging.debug(f"Callback - {selected_tab} Error Stage: No data available or permission issues.")
-                    content = None
+                if df.empty and has_perm:
+                    logging.debug(f"Callback - {selected_tab} loaded_trips is empty.")
+                    content = html.Div(
+                        [
+                            html.Div("No data available", style={'text-align': 'center', 'margin-bottom': '16px'}),
+                        ],
+                        style={'margin-top': '36px'}
+                    )
+
+                elif not has_perm:
+                    logging.debug(f"Callback - {selected_tab} Error Stage: No permission or no data available.")
+                    content = html.Div([html.P("No data available or you don't have permission.")])
                 else:
                     df = df.drop(columns=[col for col in df.columns if col not in columns])
                     df = clean_location_data(df)
@@ -247,7 +280,6 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                         html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
                         trips_table
                     ])
-
             # Store timing after handling Trips tab
             esdsq.store_dashboard_time(
                 "admin/data/render_content/handle_trips_tab",
@@ -266,12 +298,18 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                     columns = list(data[0].keys()) if data else []
                     df = pd.DataFrame(data)
                     if df.empty:
-                        content = None
+                        content = html.Div(
+                            [wrap_with_skeleton('demographics', 500, html.Div())],
+                            style={'margin-top': '36px'}
+                        )
                     else:
                         content = populate_datatable(df, store_uuids)
                 elif len(data) > 1:
                     if not has_perm:
-                        content = None
+                        content = html.Div(
+                            [wrap_with_skeleton('demographics', 100, html.Div())],
+                            style={'margin-top': '36px'}
+                        )
                     else:
                         content = html.Div([
                             dcc.Tabs(id='subtabs-demographics', value=list(data.keys())[0], children=[
@@ -342,6 +380,10 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
     Input('store-uuids', 'data')
 )
 def update_sub_tab(tab, store_demographics, store_uuids):
+    # Check for None values
+    if tab is None or store_demographics is None or store_uuids is None:
+        raise PreventUpdate
+
     with ect.Timer() as total_timer:
 
         # Stage 1: Retrieve and process data for the selected subtab
@@ -406,6 +448,9 @@ def update_sub_tab(tab, store_demographics, store_uuids):
 )
 # Controls visibility of columns in trips table and updates the label of button based on the number of clicks.
 def update_dropdowns_trips(n_clicks, button_label):
+    if n_clicks is None or button_label is None:
+        raise PreventUpdate
+
     with ect.Timer() as total_timer:
 
         # Stage 1: Determine hidden columns and button label based on number of clicks
@@ -433,7 +478,7 @@ def update_dropdowns_trips(n_clicks, button_label):
 
 def populate_datatable(df, store_uuids, table_id=''):
     with ect.Timer() as total_timer:
-
+        df.fillna("N/A", inplace=True)
         # Stage 1: Check if df is a DataFrame and raise PreventUpdate if not
         with ect.Timer() as stage1_timer:
             if not isinstance(df, pd.DataFrame):
@@ -442,29 +487,39 @@ def populate_datatable(df, store_uuids, table_id=''):
             "admin/data/populate_datatable/check_dataframe_type",
             stage1_timer
         )
-
         if 'user_token' not in df.columns:
             uuids_df = pd.DataFrame(store_uuids['data'])
-            df.insert(
-                uuids_df.columns.get_loc('user_id'),
-                'user_token',
-                df['user_id'].map(uuids_df.set_index('user_id')['user_token'])
-            )
+            
+            # Log UUID DataFrame details
+            logging.info(f"UUIDs DF Columns: {uuids_df.columns}")
+            logging.info(f"UUIDs DF First Row: {uuids_df.iloc[0].to_dict() if not uuids_df.empty else 'DataFrame is empty'}")
 
+            # Handle missing user_id and map user_token
+            df['data.user_id'] = df['data.user_id'].fillna('Unknown')
+            uuids_df['user_id'] = uuids_df['user_id'].fillna('Unknown')
+            df.fillna("N/A", inplace=True)
+            # Map 'user_token' using 'data.user_id' in df and 'user_id' in uuids_df
+            logging.info(f'Mapping df[data.user_id] to uuids_df[user_id] for user_token...')
+            df['user_token'] = df['data.user_id'].map(uuids_df.set_index('user_id')['user_token']).fillna('Unknown')
+
+            logging.info(f'DataFrame after adding user_token: {df.head()}')
         # Stage 2: Create the DataTable from the DataFrame
         with ect.Timer() as stage2_timer:
+            df.fillna("N/A", inplace=True)
+            df.columns = [col.replace('.', '_') for col in df.columns]
+            # Log data to debug
+            logging.info(f"AgGrid rowData: {df.to_dict('records')}")
+            logging.info(f"AgGrid columnDefs: {[{'field': col} for col in df.columns]}")
             result = dag.AgGrid(
                 id=table_id,
-                rowData=df.to_dict('records'),
-                columnDefs=[{"field": i, "headerName": i} for i in df.columns],
-                dashGridOptions={"pagination": True, "enableCellTextSelection": True,},
-                columnSize="autoSize",
-                defaultColDef={ "sortable": True, "filter": True },
-                style={
-                    "--ag-font-family": "monospace",
-                    "height": "600px"
+                rowData=df.to_dict('records'),  # Pass data from the DataFrame
+                columnDefs=[{"field": col} for col in df.columns],  # Minimal column definitions
+                dashGridOptions={
+                    "pagination": True,  # Enable basic pagination
+                    "paginationPageSize": 50,  # Set page size
                 },
             )
+
         esdsq.store_dashboard_time(
             "admin/data/populate_datatable/create_datatable",
             stage2_timer
