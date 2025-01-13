@@ -351,7 +351,12 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
                         content = datatable
                 else:
-                    content = None
+                    content = html.Div(
+                        [
+                            html.Div("No data available", style={'text-align': 'center', 'margin-bottom': '16px'}),
+                        ],
+                        style={'margin-top': '36px'}
+                    )
 
             # Store timing after handling Trajectories tab
             esdsq.store_dashboard_time(
@@ -489,20 +494,37 @@ def populate_datatable(df, store_uuids, table_id=''):
         )
         if 'user_token' not in df.columns:
             uuids_df = pd.DataFrame(store_uuids['data'])
-            
-            # Log UUID DataFrame details
-            logging.info(f"UUIDs DF Columns: {uuids_df.columns}")
-            logging.info(f"UUIDs DF First Row: {uuids_df.iloc[0].to_dict() if not uuids_df.empty else 'DataFrame is empty'}")
+            try:
+                # Try to handle 'data.user_id'
+                if 'data.user_id' in df.columns:
+                    # Log information about the DataFrame structure
+                    logging.info(f"Using 'data.user_id' column in the DataFrame.")
 
-            # Handle missing user_id and map user_token
-            df['data.user_id'] = df['data.user_id'].fillna('Unknown')
-            uuids_df['user_id'] = uuids_df['user_id'].fillna('Unknown')
-            df.fillna("N/A", inplace=True)
-            # Map 'user_token' using 'data.user_id' in df and 'user_id' in uuids_df
-            logging.info(f'Mapping df[data.user_id] to uuids_df[user_id] for user_token...')
-            df['user_token'] = df['data.user_id'].map(uuids_df.set_index('user_id')['user_token']).fillna('Unknown')
+                    # Fill missing values and map 'user_token'
+                    df['data.user_id'] = df['data.user_id'].fillna('Unknown')
+                    uuids_df['user_id'] = uuids_df['user_id'].fillna('Unknown')
+                    df.fillna("N/A", inplace=True)
 
-            logging.info(f'DataFrame after adding user_token: {df.head()}')
+                    logging.info(f"Mapping df['data.user_id'] to uuids_df['user_id'] for user_token...")
+                    df['user_token'] = df['data.user_id'].map(uuids_df.set_index('user_id')['user_token']).fillna('Unknown')
+                elif 'user_id' in df.columns:
+                    # Handle 'user_id' column instead
+                    logging.info(f"Using 'user_id' column in the DataFrame.")
+
+                    # Fill missing values and map 'user_token'
+                    df['user_id'] = df['user_id'].fillna('Unknown')
+                    uuids_df['user_id'] = uuids_df['user_id'].fillna('Unknown')
+                    df.fillna("N/A", inplace=True)
+
+                    logging.info(f"Mapping df['user_id'] to uuids_df['user_id'] for user_token...")
+                    df['user_token'] = df['user_id'].map(uuids_df.set_index('user_id')['user_token']).fillna('Unknown')
+                else:
+                    logging.error(f"Neither 'data.user_id' nor 'user_id' columns exist in the DataFrame.")
+                    raise KeyError("Required columns for mapping 'user_token' are missing.")
+
+                logging.info(f"DataFrame after adding user_token: {df.head()}")
+            except KeyError as e:
+                logging.error(f"KeyError encountered: {e}")
         # Stage 2: Create the DataTable from the DataFrame
         with ect.Timer() as stage2_timer:
             df.fillna("N/A", inplace=True)
