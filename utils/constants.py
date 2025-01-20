@@ -44,6 +44,8 @@ valid_uuids_columns = [
     'first_trip',
     'last_trip',
     'last_call',
+    'labeled_trips_percent',
+    'last_labeled',
     'platform',
     'manufacturer',
     'app_version',

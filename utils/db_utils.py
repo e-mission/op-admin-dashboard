@@ -440,7 +440,7 @@ def add_user_stats(user_data, batch_size=5):
                 
                 # Fetch aggregated data for all users once and cache it
                 ts_aggregate = esta.TimeSeries.get_aggregate_time_series()
-    
+                ts = esta.TimeSeries.get_time_series(user_uuid)
                 # Fetch data for the user, cached for repeated queries
                 profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
                 
@@ -455,7 +455,25 @@ def add_user_stats(user_data, batch_size=5):
                 
                 user['total_trips'] = total_trips
                 user['labeled_trips'] = labeled_trips
-    
+
+                # Labeled Trips
+                labeled_entries = list(ts.find_entries(
+                    key_list=["analysis/confirmed_trip"],
+                    extra_query_list=[{'data.user_input': {'$ne': {}}}]
+                ))
+                if not labeled_entries:
+                    user['last_labeled'] = None
+                else:
+                    # the "most recent" labeled trip has the largest data.end_ts
+                    last_labeled_ts = max(e["data"]["end_ts"] for e in labeled_entries)
+                    user['last_labeled'] = arrow.get(last_labeled_ts).format("YYYY-MM-DD HH:mm:ss")
+
+                # Compute labeled_trips_percent
+                if total_trips > 0:
+                    user['labeled_trips_percent'] = round((labeled_trips / total_trips) * 100, 2)
+                else:
+                    user['labeled_trips_percent'] = 0.0
+
                 if profile_data:
                     user['platform'] = profile_data.get('curr_platform')
                     user['manufacturer'] = profile_data.get('manufacturer')
@@ -464,7 +482,6 @@ def add_user_stats(user_data, batch_size=5):
                     user['phone_lang'] = profile_data.get('phone_lang')
     
                 if total_trips > 0:
-                    ts = esta.TimeSeries.get_time_series(user_uuid)
                     first_trip_ts = ts.get_first_value_for_field(
                         key='analysis/confirmed_trip',
                         field='data.end_ts',
