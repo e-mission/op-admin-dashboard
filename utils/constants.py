@@ -35,7 +35,7 @@ BINARY_TRIP_COLS = [
     "inferred_section_summary",
 ]
 
-valid_uuids_columns = [
+VALID_UUIDS_COLS = [
     'user_token',
     'user_id',
     'update_ts',

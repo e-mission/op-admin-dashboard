@@ -442,17 +442,6 @@ def add_user_stats(user_data, batch_size=5):
                 ts_aggregate = esta.TimeSeries.get_aggregate_time_series()
                 ts = esta.TimeSeries.get_time_series(user_uuid)
                 # Fetch data for the user, cached for repeated queries
-                profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
-                
-                total_trips = ts_aggregate.find_entries_count(
-                    key_list=["analysis/confirmed_trip"],
-                    extra_query_list=[{'user_id': user_uuid}]
-                )
-                labeled_trips = ts_aggregate.find_entries_count(
-                    key_list=["analysis/confirmed_trip"],
-                    extra_query_list=[{'user_id': user_uuid}, {'data.user_input': {'$ne': {}}}]
-                )
-                
                 user['total_trips'] = total_trips
                 user['labeled_trips'] = labeled_trips
 
@@ -505,6 +494,19 @@ def add_user_stats(user_data, batch_size=5):
                     )
                     if last_call_ts != -1:
                         user['last_call'] = arrow.get(last_call_ts).format(time_format)
+                # Retrieve and assign pipeline range
+                pipeline_range = profile_data.get('pipeline_range', {})
+                start_ts = pipeline_range.get('start_ts')
+                end_ts = pipeline_range.get('end_ts')
+                if start_ts:
+                    user['first_trip'] = arrow.get(start_ts).format(time_format)
+                if end_ts:
+                    user['last_trip'] = arrow.get(end_ts).format(time_format)
+                
+                # Retrieve and assign last API call timestamp
+                last_call_ts = profile_data.get('last_call_ts')
+                if last_call_ts:
+                    user['last_call'] = arrow.get(last_call_ts).format('YYYY-MM-DD')
                 
             esdsq.store_dashboard_time(
                 "admin/db_utils/add_user_stats/process_user",
