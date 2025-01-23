@@ -1,169 +1,214 @@
 import os
-import zipfile
-
 import pandas as pd
+import logging
 
 import dash_bootstrap_components as dbc
-from dash import dcc, html, Input, Output, callback, State, register_page, dash_table
+from dash import dcc, html, Input, Output, callback, State, register_page, no_update
+import dash_ag_grid as dag
 
-from emission.storage.decorations.token_queries import insert_many_tokens
+import emission.storage.decorations.token_queries as esdt
 import emission.core.get_database as edb
+import emcommon.auth.opcode as emcao
 
-from utils.generate_qr_codes import saveAsQRCode
-from utils.generate_random_tokens import generateRandomTokensForProgram
-from utils.permissions import get_token_prefix, has_permission
+from utils.generate_qr_codes import make_qrcode_base64_img, make_qrcodes_zipfile
+from utils.permissions import has_permission, config, get_token_prefix
 
+
+STUDY_CONFIG = os.getenv('STUDY_CONFIG')
 
 if has_permission('token_generate'):
     register_page(__name__, path="/tokens")
 
-intro = """## Tokens"""
-QRCODE_PATH = 'assets/qrcodes'
 
 layout = html.Div(
     [
-        dcc.Markdown(intro),
-        dbc.Row([
-            dbc.Col(
-                [
-                    html.Label('Program'),
-                    dcc.Input(value='program', id='token-program', type='text', required=True, style={
-                        'font-size': '14px', 'width': '100%', 'display': 'block', 'margin-bottom': '10px',
-                        'margin-right': '5px', 'height': '30px', 'verticalAlign': 'top', 'background-color': '#b4dbf0',
-                        'overflow': 'hidden',
-                    }),
-
-                    html.Label('Token Length'),
-                    dcc.Input(value=5, id='token-length', type='number', min=3, max=100, required=True, style={
-                        'font-size': '14px', 'width': '100%', 'display': 'block', 'margin-bottom': '10px',
-                        'margin-right': '5px', 'height': '30px', 'verticalAlign': 'top', 'background-color': '#b4dbf0',
-                        'overflow': 'hidden',
-                    }),
-
-                    html.Label('Number of Tokens'),
-                    dcc.Input(value=1, id='token-count', type='number', min=0, required=True, style={
-                        'font-size': '14px', 'width': '100%', 'display': 'block', 'margin-bottom': '10px',
-                        'margin-right': '5px', 'height': '30px', 'verticalAlign': 'top', 'background-color': '#b4dbf0',
-                        'overflow': 'hidden',
-                    }),
-                ],
-                xl=3,
-                lg=4,
-                sm=6,
-            ),
-            dbc.Col(
-                [
-                    html.Label('Out Format'),
-                    dcc.Dropdown(options=['url safe', 'hex', 'base64'], value='url safe', id='token-format'),
-
-                    html.Br(),
-                    dcc.Checklist(
-                        className='radio-items',
-                        id='token-checklist',
-                        options=[{'label': 'For Testing', 'value': 'test-token'}],
-                        value=[],
-                        style={
-                            'padding': '5px',
-                            'margin': 'auto'
-                        }
-                    ),
-
-                    html.Br(),
-                    html.Div([
-                        html.Button(children='Generate Tokens', id='token-generate', n_clicks=0, style={
-                            'font-size': '14px', 'width': '140px', 'display': 'block', 'margin-bottom': '10px',
-                            'margin-right': '5px', 'height':'40px', 'verticalAlign': 'top', 'background-color': 'green',
-                            'color': 'white',
-                        }),
-                        dcc.Download(id='download-token'),
-                    ])
-
-                ],
-                xl=3,
-                lg=4,
-                sm=6,
-            ),
-        ]),
-
+        dcc.Store(id="store-tokens", data=[]),
+        dcc.Store(id="store-qrcodes", data={}),
+        html.Div([
+            dcc.Markdown('## Tokens', style={'margin-right': 'auto'}),
+            dbc.Button(children='Generate more tokens', id='open-modal-btn', n_clicks=0),
+            dbc.Button(children='Export QR codes',
+                       color='primary',
+                       outline=True,
+                       id='token-export', n_clicks=0),
+            dcc.Download(id='download-tokens'),
+        ],
+            style={'display': 'flex', 'gap': '5px', 'margin-bottom': '20px'}
+        ),
         html.Div(id='token-table'),
-
-        html.Br(),
-        html.Button(children='Export QR codes', id='token-export', n_clicks=0, style={
-            'font-size': '14px', 'width': '140px', 'display': 'block', 'margin-bottom': '10px',
-            'margin-right': '5px', 'height':'40px', 'verticalAlign': 'top', 'background-color': 'green',
-            'color': 'white',
-        }),
+        dbc.Modal([
+            dbc.ModalHeader("Generate tokens"),
+            dbc.ModalBody([
+                html.Div([
+                    dbc.Label('Program'),
+                    dbc.Input(value=(STUDY_CONFIG or 'program'),
+                              id='token-program',
+                              type='text',
+                              disabled=(bool(STUDY_CONFIG)),
+                              required=True),
+                ]),
+                html.Div([
+                    dbc.Label('Token Length'),
+                    dbc.Input(value=10, id='token-length', type='number', min=6, max=100, required=True),
+                ]),
+                html.Div([
+                    dbc.Label('Token Subgroup'),
+                    dcc.Dropdown(
+                        config.get('opcode', {}).get('subgroups', ['test']),
+                        id='token-subgroup',
+                    ),
+                ]),
+                dbc.Alert([
+                    dbc.Label('New token(s) will be in this format:', style={'margin': '0'}),
+                    html.Hr(style={'margin': '8px'}),
+                    dbc.Label(id='example-token', style={
+                        'font-family': 'monospace',
+                        'word-break': 'break-all',
+                        'margin': '0',
+                    }),
+                ],
+                    color='info',
+                    style={'margin': '15px 5px'},
+                ),
+                html.Div([
+                    dbc.Label('Number of Tokens'),
+                    dbc.Input(value=1, id='token-count', type='number', min=0, required=True),
+                ]),
+                html.Div([
+                    dbc.Button('Close', id='close-modal-btn', color='primary', outline=True, n_clicks=0),
+                    dbc.Button('Generate', id='generate-tokens-btn', color='primary', n_clicks=0),
+                ],
+                    style={'display': 'flex', 'gap': '10px', 'margin-top': '20px'}
+                ),
+            ],
+                style={'display': 'flex', 'flex-direction': 'column', 'gap': '10px'}
+            )
+        ],
+            id="generate-tokens-modal",
+            is_open=False,
+        )
     ]
 )
 
+
 @callback(
-    Output('token-generate', 'n_clicks'),
-    Output('token-table', 'children'),
-    Input('token-generate', 'n_clicks'),
-    State('token-program', 'value'),
-    State('token-length', 'value'),
-    State('token-count', 'value'),
-    State('token-format', 'value'),
-    State('token-checklist', 'value'),
+    Output('store-tokens', 'data'),
+    Input('store-tokens', 'data'),
 )
-def generate_tokens(n_clicks, program, token_length, token_count, out_format, checklist):
+def load_tokens(_):
+  return [e.get('token') for e in edb.get_token_db().find({})]
+
+
+@callback(
+    Output("generate-tokens-modal", "is_open"),
+    [Input("open-modal-btn", "n_clicks"),
+     Input("close-modal-btn", "n_clicks"),
+     Input("generate-tokens-btn", "n_clicks")],
+    [State("generate-tokens-modal", "is_open")],
+    prevent_initial_call=True,
+)
+def toggle_modal(_n1, _n2, _n3, is_open):
+    if _n1 or _n2 or _n3: return not is_open
+
+
+@callback(
+    Output('store-tokens', 'data', allow_duplicate=True),
+    Output('example-token', 'children'),
+    Output('generate-tokens-btn', 'n_clicks'),
+    Input('generate-tokens-btn', 'n_clicks'),
+    Input('token-program', 'value'),
+    Input('token-subgroup', 'value'),
+    Input('token-length', 'value'),
+    Input('token-count', 'value'),
+    State('store-tokens', 'data'),
+    Input('store-uuids', 'data'),
+    prevent_initial_call=True
+)
+def generate_tokens(n_clicks, program, subgroup, token_length, token_count, tokens, uuids):
+    prefix = get_token_prefix()
+    new_tokens = [
+        emcao.generate_opcode(prefix, program, subgroup, token_length)
+        for _ in range(token_count)
+    ]
     if n_clicks is not None and n_clicks > 0:
-        token_prefix = get_token_prefix() + program + ('_test' if 'test-token' in checklist else '')
-        tokens = generateRandomTokensForProgram(token_prefix, token_length, token_count, out_format)
-        insert_many_tokens(tokens)
-        for token in tokens:
-            saveAsQRCode(QRCODE_PATH, token)
-    tokens_table = populate_datatable()
-    return 0, tokens_table
+        esdt.insert_many_tokens(new_tokens)
+        tokens += new_tokens
+        return tokens, new_tokens[0], 0
+    return no_update, new_tokens[0], no_update
 
 
 @callback(
-    Output('download-token', 'data'),
+    Output('download-tokens', 'data'),
     Input('token-export', 'n_clicks'),
+    State('store-tokens', 'data'),
+    prevent_initial_call=True,
 )
-def export_tokens(n_clicks):
-    def zip_directory(bytes_io):
-        with zipfile.ZipFile(bytes_io, mode="w") as zf:
-            len_dir_path = len(QRCODE_PATH)
-            for root, _, files in os.walk(QRCODE_PATH):
-                for img in files:
-                    file_path = os.path.join(root, img)
-                    zf.write(file_path, file_path[len_dir_path:])
-
-    if n_clicks > 0:
-        return dcc.send_bytes(zip_directory, "tokens.zip")
+def export_tokens(_, tokens):
+    zip_fn = make_qrcodes_zipfile(tokens)
+    return dcc.send_bytes(zip_fn, "tokens.zip")
 
 
-def populate_datatable():
-    df = query_tokens()
-    if df.empty:
+@callback(
+    Output('token-table', 'children'),
+    Input('store-uuids', 'data'),
+    Input('store-tokens', 'data'),
+    Input('store-qrcodes', 'data'),
+)
+def populate_datatable(uuids, tokens, qrcodes):
+    logging.info(f'tokens: {tokens}')
+    if not tokens:
         return None
-    df['id'] = df.index + 1
-    df['qr_code'] = "<img src='" + QRCODE_PATH + "/" + df['token'] + ".png' height='100px' />"
-    df = df.reindex(columns=['id', 'token', 'qr_code'])
-    return dash_table.DataTable(
-        id='tokens-table',
-        css=[dict(selector="p", rule="margin: 0px;")],
-        columns=[
-            {"id": "id", "name": "id"},
-            {"id": "token", "name": "token"},
-            {"id": "qr_code", "name": "qr_code", "presentation": "markdown"},
-        ],
-        data=df.to_dict('records'),
-        filter_options={"case": "sensitive"},
-        sort_action="native",  # give user capability to sort columns
-        sort_mode="single",  # sort across 'multi' or 'single' columns
-        page_current=0,  # page number that user is on
-        page_size=50,  # number of rows visible per page
-        style_cell={
-            'textAlign': 'left',
-        },
-        markdown_options={"html": True},
-        style_table={'overflowX': 'auto'},
-        export_format='csv',
+    df = pd.DataFrame({'token': tokens})
+    df['qr_code'] = df['token'].apply(
+        lambda row: qrcodes.get(row, '(click to reveal)')
     )
+    uuids_records = uuids.get('data', [])
+    df['in_use'] = df.apply(
+        lambda row: any(uuid['user_email'] == row['token']
+                        for uuid in uuids_records),
+        axis=1,
+    )
+    df = df.reindex(columns=['token', 'in_use', 'qr_code'])
+    return html.Div([
+        dag.AgGrid(
+            id='tokens-table',
+            rowData=df.to_dict('records'),
+            columnDefs=[{"field": i, "headerName": i} for i in df.columns],
+            defaultColDef={"sortable": True, "filter": True,
+                          "cellRenderer": "markdown",
+                          "autoHeight": True},
+            dashGridOptions={"pagination": True, "enableCellTextSelection": True},
+            columnSize="autoSize",
+            style={"height": "700px",
+                   "--ag-font-family": "monospace"},
+            getRowId="params.data.token",
+        ),
+        dbc.Button("Download CSV", id="export-tokens-table-btn",
+                   color="primary", outline=True, className="mt-3"),
+    ])
 
-def query_tokens():
-    query_result = edb.get_token_db().find({}, {"_id": 0})
-    df = pd.json_normalize(list(query_result))
-    return df
+
+@callback(
+    Output("tokens-table", "exportDataAsCsv"),
+    Output("tokens-table", "csvExportParams"),
+    Input("export-tokens-table-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def export_table_as_csv(_):
+    return True, {"fileName": "tokens-table.csv"}
+
+
+@callback(
+    Output("store-qrcodes", "data"),
+    Input("tokens-table", "cellClicked"),
+    State("store-qrcodes", "data"),
+)
+def make_qr_on_row_selected(cell_clicked, qrcodes):
+    if not cell_clicked or cell_clicked["colId"] != "qr_code":
+        return no_update
+    token = cell_clicked["rowId"]
+    if token in qrcodes:
+        return no_update
+    img_src = f'data:image/png;base64,{make_qrcode_base64_img(token)}'
+    qrcodes[token] = f'![{token}]({img_src})'
+    return qrcodes
