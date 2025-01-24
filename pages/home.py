@@ -1,3 +1,4 @@
+# home.py
 """
 Note that the callback will trigger even if prevent_initial_call=True. This is because dcc.Location must
 be in app.py.  Since the dcc.Location component is not in the layout when navigating to this page, it triggers the callback.
@@ -10,17 +11,16 @@ import dash_bootstrap_components as dbc
 
 import plotly.express as px
 
-# Etc
 import pandas as pd
 import arrow
 
-# e-mission modules
 import emission.core.get_database as edb
+import emission.core.timer as ect
+import emission.storage.decorations.stats_queries as esdsq
 
 from utils.permissions import has_permission
 from utils.datetime_utils import iso_to_date_only
-import emission.core.timer as ect
-import emission.storage.decorations.stats_queries as esdsq
+from utils.ux_utils import skeleton
 
 register_page(__name__, path="/")
 
@@ -39,16 +39,19 @@ layout = html.Div(
 
         # Cards
         dbc.Row([
-            dbc.Col(id='card-users'),
-            dbc.Col(id='card-active-users'),
-            dbc.Col(id='card-trips')
+            dbc.Col(skeleton(100), id='card-users'),
+            dbc.Col(skeleton(100), id='card-active-users'),
+            dbc.Col(skeleton(100), id='card-trips'),
         ]),
 
         # Plots
-        dbc.Row([
-            dcc.Graph(id="fig-sign-up-trend"),
-            dcc.Graph(id="fig-trips-trend"),
-        ])
+        dbc.Row(
+            dbc.Col(skeleton(300), id="fig-sign-up-trend"),
+            className="my-4"
+        ),
+        dbc.Row(
+            dbc.Col(skeleton(300), id="fig-trips-trend"),
+        ),
     ]
 )
 
@@ -382,7 +385,7 @@ def generate_barplot(data, x, y, title):
 
 
 @callback(
-    Output('fig-sign-up-trend', 'figure'),
+    Output('fig-sign-up-trend', 'children'),
     Input('store-uuids', 'data'),
 )
 def generate_plot_sign_up_trend(store_uuids):
@@ -420,11 +423,11 @@ def generate_plot_sign_up_trend(store_uuids):
         total_timer
     )
 
-    return fig
+    return dcc.Graph(figure=fig)
 
 
 @callback(
-    Output('fig-trips-trend', 'figure'),
+    Output('fig-trips-trend', 'children'),
     Input('store-trips', 'data'),
     Input('date-picker', 'start_date'),  # these are ISO strings
     Input('date-picker', 'end_date'),  # these are ISO strings
@@ -472,5 +475,5 @@ def generate_plot_trips_trend(store_trips, start_date, end_date):
         total_timer
     )
 
-    return fig
+    return dcc.Graph(figure=fig)
 
