@@ -133,17 +133,18 @@ def compute_trips_trend(trips_df, date_col):
 
 def get_number_of_active_users(uuid_list, threshold):
     with ect.Timer() as total_timer:
-        number_of_active_users = 0
-        current_timestamp = arrow.utcnow().timestamp()
-        for npu in uuid_list:
-            user_uuid = UUID(npu)
-            profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
-            if profile_data:
-                last_call_ts = profile_data.get('last_call_ts')
-                if last_call_ts and (current_timestamp - arrow.get(last_call_ts).timestamp()) <= threshold:
-                    number_of_active_users += 1
+        # Subtract threshold seconds to get cutoff datetime
+        cutoff_dt = (arrow.utcnow().shift(seconds=-threshold)).datetime
+        
+        uuid_objs = [UUID(u) for u in uuid_list]
+        
+        num_active = edb.get_profile_db().count_documents({
+            "user_id": {"$in": uuid_objs},
+            "last_call_ts": {"$gte": cutoff_dt},
+        })
     esdsq.store_dashboard_time("admin/home/get_number_of_active_users/total_time", total_timer)
-    return number_of_active_users
+    return num_active
+
 
 
 
