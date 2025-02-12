@@ -49,6 +49,10 @@ VALID_UUIDS_COLS = [
     'app_version',
     'os_version',
     'phone_lang',
+    'last_location_ts',
+    'last_phone_data_ts',
+    'last_sync_ts',
+    'last_diary_fetch_ts',
 ]
 
 BINARY_DEMOGRAPHICS_COLS = [

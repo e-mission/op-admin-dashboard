@@ -448,6 +448,11 @@ def add_user_stats(user_data, batch_size=5):
                 user['app_version'] = profile_data.get('client_app_version')
                 user['os_version'] = profile_data.get('client_os_version')
                 user['phone_lang'] = profile_data.get('phone_lang')
+                user['last_location_ts'] = profile_data.get('last_location_ts')
+                user['last_phone_data_ts'] = profile_data.get('last_phone_data_ts')
+                user['last_sync_ts'] = profile_data.get('last_sync_ts')
+                user['last_put_ts'] = profile_data.get('last_put_ts')
+                user['last_diary_fetch_ts'] = profile_data.get('last_diary_fetch_ts')
                 
                 # Assign newly stored statistics to the user dictionary
                 user['total_trips'] = profile_data.get('total_trips')
