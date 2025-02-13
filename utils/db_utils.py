@@ -453,6 +453,8 @@ def add_user_stats(user_data, batch_size=5):
                 user['last_sync_ts'] = profile_data.get('last_sync_ts')
                 user['last_put_ts'] = profile_data.get('last_put_ts')
                 user['last_diary_fetch_ts'] = profile_data.get('last_diary_fetch_ts')
+                user['create_ts'] = profile_data.get('create_ts')
+                user['update_ts'] = profile_data.get('update_ts')
                 
                 # Assign newly stored statistics to the user dictionary
                 user['total_trips'] = profile_data.get('total_trips')

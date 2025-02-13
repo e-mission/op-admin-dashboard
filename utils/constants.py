@@ -53,6 +53,8 @@ VALID_UUIDS_COLS = [
     'last_phone_data_ts',
     'last_sync_ts',
     'last_diary_fetch_ts',
+    'create_ts',
+    'update_ts',
 ]
 
 BINARY_DEMOGRAPHICS_COLS = [
