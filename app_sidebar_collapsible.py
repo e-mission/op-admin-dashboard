@@ -14,7 +14,7 @@ import arrow
 
 import dash
 import dash_bootstrap_components as dbc
-from dash import Input, Output, dcc, html, Dash
+from dash import Input, Output, dcc, html, Dash, DiskcacheManager
 import dash_auth
 import logging
 import base64
@@ -42,10 +42,17 @@ elif auth_type == 'basic':
         'hello': 'world'
     }
 
+# diskcache manager; required for 'background' callbacks
+# https: // dash.plotly.com/background-callbacks
+import diskcache
+cache = diskcache.Cache("./cache")
+background_callback_manager = DiskcacheManager(cache)
+
 app = Dash(
     external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME],
     suppress_callback_exceptions=True,
     use_pages=True,
+    background_callback_manager=background_callback_manager
 )
 server = app.server  # expose server variable for Procfile
 
