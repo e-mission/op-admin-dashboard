@@ -14,8 +14,12 @@ import arrow
 
 import dash
 import dash_bootstrap_components as dbc
-from dash import Input, Output, dcc, html, Dash
+from dash import Input, Output, dcc, html, Dash, DiskcacheManager
+import dash_mantine_components as dmc
 import dash_auth
+import asyncio
+import requests
+import base64
 import logging
 import base64
 # Set the logging right at the top to make sure that debug
@@ -24,10 +28,14 @@ import base64
 if os.getenv('DASH_DEBUG_MODE', 'True').lower() == 'true':
     logging.basicConfig(level=logging.DEBUG)
 
+import emission.analysis.configs.dynamic_config as eacd
+import emcommon.util as emcu
+
 from utils.datetime_utils import iso_to_date_only
 from utils.db_utils import df_to_filtered_records, query_uuids, query_confirmed_trips, query_demographics
 from utils.permissions import has_permission, config
 import flask_talisman as flt
+from dash.long_callback import DiskcacheLongCallbackManager
 
 
 OPENPATH_LOGO = os.path.join(os.getcwd(), "assets/openpath-logo.jpg")
@@ -42,10 +50,18 @@ elif auth_type == 'basic':
         'hello': 'world'
     }
 
+# diskcache manager; required for 'background' callbacks
+# https: // dash.plotly.com/background-callbacks
+import diskcache
+
+cache = diskcache.Cache("./cache")
+background_callback_manager = DiskcacheLongCallbackManager(cache)
+
 app = Dash(
     external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME],
     suppress_callback_exceptions=True,
     use_pages=True,
+    background_callback_manager=background_callback_manager
 )
 server = app.server  # expose server variable for Procfile
 
@@ -240,15 +256,22 @@ def make_home_page(): return [
 ]
 
 
-def make_layout(): return html.Div([
-    dcc.Location(id='url', refresh=False),
-    dcc.Store(id='store-trips', data={}),
-    dcc.Store(id='store-uuids', data={}),
-    dcc.Store(id='store-excluded-uuids', data={}), # list of UUIDs from excluded subgroups
-    dcc.Store(id='store-demographics', data={}),
-    dcc.Store(id='store-trajectories', data={}),
-    html.Div(id='page-content', children=make_home_page()),
-])
+def make_layout():
+    return dmc.MantineProvider(
+        theme={'colorScheme': 'light'},  # Optional: Customize theme
+        children=[
+            html.Div([
+                dcc.Location(id='url', refresh=False),
+                dcc.Store(id='store-trips', data={}),
+                dcc.Store(id='store-uuids', data={}),
+                dcc.Store(id='store-excluded-uuids', data={}),  # list of UUIDs from excluded subgroups
+                dcc.Store(id='store-demographics', data={}),
+                dcc.Store(id='store-trajectories', data={}),
+                html.Div(id='page-content', children=make_home_page()),
+            ])
+        ]
+    )
+
 app.layout = make_layout
 
 # make the 'filters' menu collapsible
@@ -338,6 +361,20 @@ def update_store_trips(start_date, end_date, timezone, excluded_uuids):
     }
     return store
 
+
+@app.callback(
+    Output('store-label-options', 'data'),
+    Input('store-label-options', 'data'),
+    background=True,
+    cancel=[Input("_pages_location", "pathname")],
+)
+def load_label_options(_):
+    config = eacd.get_dynamic_config()
+    if 'label-options' not in config:
+        return asyncio.run(
+            emcu.read_json_resource("label-options.default.json")
+        )
+    return requests.get(config['label-options']).json()
 
 # Define the callback to display the page content based on the URL path
 @app.callback(
