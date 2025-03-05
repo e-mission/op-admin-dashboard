@@ -1,3 +1,4 @@
+# home.py
 """
 Note that the callback will trigger even if prevent_initial_call=True. This is because dcc.Location must
 be in app.py.  Since the dcc.Location component is not in the layout when navigating to this page, it triggers the callback.
@@ -10,17 +11,16 @@ import dash_bootstrap_components as dbc
 
 import plotly.express as px
 
-# Etc
 import pandas as pd
 import arrow
 
-# e-mission modules
 import emission.core.get_database as edb
+import emission.core.timer as ect
+import emission.storage.decorations.stats_queries as esdsq
 
 from utils.permissions import has_permission
 from utils.datetime_utils import iso_to_date_only
-import emission.core.timer as ect
-import emission.storage.decorations.stats_queries as esdsq
+from utils.ux_utils import skeleton
 
 register_page(__name__, path="/")
 
@@ -39,16 +39,19 @@ layout = html.Div(
 
         # Cards
         dbc.Row([
-            dbc.Col(id='card-users'),
-            dbc.Col(id='card-active-users'),
-            dbc.Col(id='card-trips')
+            dbc.Col(skeleton(100), id='card-users'),
+            dbc.Col(skeleton(100), id='card-active-users'),
+            dbc.Col(skeleton(100), id='card-trips'),
         ]),
 
         # Plots
-        dbc.Row([
-            dcc.Graph(id="fig-sign-up-trend"),
-            dcc.Graph(id="fig-trips-trend"),
-        ])
+        dbc.Row(
+            dbc.Col(skeleton(300), id="fig-sign-up-trend"),
+            className="my-4"
+        ),
+        dbc.Row(
+            dbc.Col(skeleton(300), id="fig-trips-trend"),
+        ),
     ]
 )
 
@@ -130,22 +133,14 @@ def compute_trips_trend(trips_df, date_col):
     return res_df
 
 
-
-def get_number_of_active_users(uuid_list, threshold):
+def get_number_of_active_users(users_df, threshold):
     with ect.Timer() as total_timer:
-        number_of_active_users = 0
-        current_timestamp = arrow.utcnow().timestamp()
-        for npu in uuid_list:
-            user_uuid = UUID(npu)
-            profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
-            if profile_data:
-                last_call_ts = profile_data.get('last_call_ts')
-                if last_call_ts and (current_timestamp - arrow.get(last_call_ts).timestamp()) <= threshold:
-                    number_of_active_users += 1
+        now_ts = arrow.utcnow().timestamp()
+        active_users_df = users_df[
+            (now_ts - users_df['last_call_ts']) <= threshold
+        ]
     esdsq.store_dashboard_time("admin/home/get_number_of_active_users/total_time", total_timer)
-    return number_of_active_users
-
-
+    return active_users_df.shape[0]
 
 
 def generate_card(title_text, body_text, icon):
@@ -223,7 +218,7 @@ def update_card_active_users(store_uuids):
 
         # Stage 1: Convert store_uuids data to DataFrame
         with ect.Timer() as stage1_timer:
-            uuid_df = pd.DataFrame(store_uuids.get('data'))
+            users_df = pd.DataFrame(store_uuids.get('data'))
         esdsq.store_dashboard_time(
             "admin/home/update_card_active_users/convert_to_dataframe",
             stage1_timer
@@ -232,9 +227,9 @@ def update_card_active_users(store_uuids):
         # Stage 2: Calculate number of active users if DataFrame is not empty and permission is granted
         with ect.Timer() as stage2_timer:
             number_of_active_users = 0
-            if not uuid_df.empty and has_permission('overview_active_users'):
+            if not users_df.empty and has_permission('overview_active_users'):
                 one_day = 24 * 60 * 60
-                number_of_active_users = get_number_of_active_users(uuid_df['user_id'], one_day)
+                number_of_active_users = get_number_of_active_users(users_df, one_day)
         esdsq.store_dashboard_time(
             "admin/home/update_card_active_users/calculate_active_users",
             stage2_timer
@@ -330,7 +325,7 @@ def generate_barplot(data, x, y, title):
 
 
 @callback(
-    Output('fig-sign-up-trend', 'figure'),
+    Output('fig-sign-up-trend', 'children'),
     Input('store-uuids', 'data'),
 )
 def generate_plot_sign_up_trend(store_uuids):
@@ -368,11 +363,11 @@ def generate_plot_sign_up_trend(store_uuids):
         total_timer
     )
 
-    return fig
+    return dcc.Graph(figure=fig)
 
 
 @callback(
-    Output('fig-trips-trend', 'figure'),
+    Output('fig-trips-trend', 'children'),
     Input('store-trips', 'data'),
     Input('date-picker', 'start_date'),  # these are ISO strings
     Input('date-picker', 'end_date'),  # these are ISO strings
@@ -420,5 +415,5 @@ def generate_plot_trips_trend(store_trips, start_date, end_date):
         total_timer
     )
 
-    return fig
+    return dcc.Graph(figure=fig)
 

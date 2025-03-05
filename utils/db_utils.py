@@ -55,71 +55,48 @@ def df_to_filtered_records(df, col_to_filter=None, vals_to_exclude: list[str] = 
     return result
 
 
-def query_uuids(start_date: str, end_date: str, tz: str):
-    # As of now, time filtering does not apply to UUIDs; we just query all of them.
-    # Vestigial code commented out and left below for future reference
-
-    # logging.debug("Querying the UUID DB for %s -> %s" % (start_date,end_date))
-    # query = {'update_ts': {'$exists': True}}
-    # if start_date is not None:
-    #     # have arrow create a datetime using start_date and time 00:00:00 in UTC
-    #     start_time = arrow.get(start_date).datetime
-    #     query['update_ts']['$gte'] = start_time
-    # if end_date is not None:
-    #     # have arrow create a datetime using end_date and time 23:59:59 in UTC
-    #     end_time = arrow.get(end_date).replace(hour=23, minute=59, second=59).datetime
-    #     query['update_ts']['$lt'] = end_time
-    # projection = {
-    #     '_id': 0,
-    #     'user_id': '$uuid',
-    #     'user_token': '$user_email',
-    #     'update_ts': 1
-    # }
-
-    logging.debug("Querying the UUID DB for (no date range)")
-
-    # This should actually use the profile DB instead of (or in addition to)
-    # the UUID DB so that we can see the app version, os, manufacturer...
-    # I will write a couple of functions to get all the users in a time range
-    # (although we should define what that time range should be) and to merge
-    # that with the profile data
-    with ect.Timer() as total_timer:
-
-        # Stage 1: Logging and query initiation
-        with ect.Timer() as stage1_timer:
-            logging.debug("Querying the UUID DB for (no date range)")
-            entries = edb.get_uuid_db().find()
-        esdsq.store_dashboard_time(
-            "admin/db_utils/query_uuids/logging_and_query_initiation",
-            stage1_timer
-        )
-
-        # Stage 2: Convert query result to DataFrame
-        with ect.Timer() as stage2_timer:
-            df = pd.json_normalize(list(entries))
-        esdsq.store_dashboard_time(
-            "admin/db_utils/query_uuids/convert_query_result_to_dataframe",
-            stage2_timer
-        )
-
-        # Stage 3: DataFrame processing
-        with ect.Timer() as stage3_timer:
-            if not df.empty:
-                df['update_ts'] = pd.to_datetime(df['update_ts'])
-                df['user_id'] = df['uuid'].apply(str)
-                df['user_token'] = df['user_email']
-                df.drop(columns=["uuid", "_id"], inplace=True)
-        esdsq.store_dashboard_time(
-            "admin/db_utils/query_uuids/dataframe_processing",
-            stage3_timer
-        )
-
+def query_users():
+    with ect.Timer() as uuids_timer:
+        logging.debug("Querying for all UUIDs")
+        uuids_entries = edb.get_uuid_db().find()
+        uuids_df = pd.json_normalize(list(uuids_entries))
+        if not uuids_df.empty:
+            uuids_df['update_ts'] = pd.to_datetime(uuids_df['update_ts'])
+            uuids_df['user_id'] = uuids_df['uuid'].apply(str)
+            uuids_df['user_token'] = uuids_df['user_email']
+            uuids_df.drop(columns=["uuid", "_id"], inplace=True)
     esdsq.store_dashboard_time(
-        "admin/db_utils/query_uuids/total_time",
-        total_timer
+        "admin/db_utils/query_users/query_uuids",
+        uuids_timer,
     )
 
-    return df
+    with ect.Timer() as profiles_timer:
+        logging.debug("Querying for all User Profiles")
+        profiles_entries = edb.get_profile_db().find()
+        profiles_df = pd.json_normalize(list(profiles_entries))
+        profiles_df['user_id'] = profiles_df['user_id'].apply(str)
+        profiles_df['last_sync_ts'] = pd.to_datetime(profiles_df['last_sync_ts'])
+        profiles_df['last_location_ts'] = pd.to_datetime(profiles_df['last_location_ts'])
+        profiles_df['last_phone_data_ts'] = pd.to_datetime(profiles_df['last_phone_data_ts'])
+        profiles_df['last_diary_fetch_ts'] = pd.to_datetime(profiles_df['last_diary_fetch_ts'])
+        profiles_df['create_ts'] = pd.to_datetime(profiles_df['create_ts'])
+        profiles_df['update_ts'] = pd.to_datetime(profiles_df['update_ts'])
+        profiles_df.drop(columns=["_id"], inplace=True)
+    esdsq.store_dashboard_time(
+        "admin/db_utils/query_users/query_profiles",
+        profiles_timer,
+    )
+
+    with ect.Timer() as merge_timer:
+        logging.debug("Merging UUIDs and Profiles")
+        users_df = pd.merge(uuids_df, profiles_df, on="user_id", how="left", suffixes=('', '_profile'))
+    esdsq.store_dashboard_time(
+        "admin/db_utils/query_users/merge_uuids_and_profiles",
+        merge_timer,
+    )
+
+    return users_df
+
 
 def query_confirmed_trips(start_date: str, end_date: str, tz: str):
     with ect.Timer() as total_timer:
@@ -427,89 +404,6 @@ def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
     )
 
     return df
-
-
-
-def add_user_stats(user_data, batch_size=5):
-    time_format = 'YYYY-MM-DD HH:mm:ss'
-    with ect.Timer() as total_timer:
-        # Stage 1: Define process_user
-        def process_user(user):
-            with ect.Timer() as process_user_timer:
-                user_uuid = UUID(user['user_id'])
-                profile_data = edb.get_profile_db().find_one({'user_id': user_uuid})
-                # Fetch data for the user, cached for repeated queries
-                logging.info(f'keyspr: {profile_data}')
-                if not profile_data:
-                    profile_data = {}
-                # Assign existing profile attributes to the user dictionary
-                user['platform'] = profile_data.get('curr_platform')
-                user['manufacturer'] = profile_data.get('manufacturer')
-                user['app_version'] = profile_data.get('client_app_version')
-                user['os_version'] = profile_data.get('client_os_version')
-                user['phone_lang'] = profile_data.get('phone_lang')
-                
-                # Assign newly stored statistics to the user dictionary
-                user['total_trips'] = profile_data.get('total_trips')
-                user['labeled_trips'] = profile_data.get('labeled_trips')
-                
-                # Retrieve and assign pipeline range
-                pipeline_range = profile_data.get('pipeline_range', {})
-                start_ts = pipeline_range.get('start_ts')
-                end_ts = pipeline_range.get('end_ts')
-                if start_ts:
-                    user['first_trip'] = arrow.get(start_ts).format(time_format)
-                if end_ts:
-                    user['last_trip'] = arrow.get(end_ts).format(time_format)
-                
-                # Retrieve and assign last API call timestamp
-                last_call_ts = profile_data.get('last_call_ts')
-                if last_call_ts:
-                    user['last_call'] = arrow.get(last_call_ts).format('YYYY-MM-DD')
-                
-            esdsq.store_dashboard_time(
-                "admin/db_utils/add_user_stats/process_user",
-                process_user_timer
-            )
-            return user
-
-        def batch_process(users_batch):
-            with ect.Timer() as batch_process_timer:
-                with ThreadPoolExecutor() as executor:  # Adjust max_workers based on CPU cores
-                    futures = [executor.submit(process_user, user) for user in users_batch]
-                    processed_batch = [future.result() for future in as_completed(futures)]
-            esdsq.store_dashboard_time(
-                "admin/db_utils/add_user_stats/get_last_trip_timestamp",
-                batch_process_timer
-            )
-            return processed_batch
-
-        
-        # Stage 3: Process batches
-        with ect.Timer() as stage3_timer:
-            total_users = len(user_data)
-            processed_data = []
-        
-            for i in range(0, total_users, batch_size):
-                with ect.Timer() as stage_loop_timer:
-                    batch = user_data[i:i + batch_size]
-                    processed_batch = batch_process(batch)
-                    processed_data.extend(processed_batch)
-        
-                    logging.debug(f'Processed {len(processed_data)} users out of {total_users}')
-                esdsq.store_dashboard_time(
-                    "admin/db_utils/add_user_stats/processing_loop_stage",
-                    stage_loop_timer
-                )
-        esdsq.store_dashboard_time(
-            "admin/db_utils/add_user_stats/process_batches",
-            stage3_timer
-        )
-    esdsq.store_dashboard_time(
-        "admin/db_utils/add_user_stats/total_time",
-        total_timer
-    )
-    return processed_data
 
 
 def query_segments_crossing_endpoints(poly_region_start, poly_region_end, start_date: str, end_date: str, tz: str, excluded_uuids: list[str]):
