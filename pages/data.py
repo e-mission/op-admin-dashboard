@@ -10,6 +10,7 @@ import arrow
 import logging
 import pandas as pd
 from dash.exceptions import PreventUpdate
+from utils.constants import VALID_UUIDS_COLS
 
 from utils import constants
 from utils import permissions as perm_utils
@@ -441,11 +442,15 @@ def populate_datatable(df, store_uuids, table_id):
             # Ag Grid does not allow . in column names; replace with _
             # before creating the DataTable
             df.columns = [col.replace('.', '_') for col in df.columns]
+            column_defs = [
+                {"field": col, "headerName": col.replace("_", " ").title()}
+                for col in VALID_UUIDS_COLS
+            ]
             result = html.Div([
               dag.AgGrid(
                 id={'type': 'data_table', 'id': table_id},
                 rowData=df.to_dict('records'),
-                columnDefs=[{"field": i, "headerName": i} for i in df.columns],
+                columnDefs=column_defs,
                 defaultColDef={ "sortable": True, "filter": True },
                 columnSize="autoSize",
                 dashGridOptions={

@@ -75,6 +75,12 @@ def query_users():
         profiles_entries = edb.get_profile_db().find()
         profiles_df = pd.json_normalize(list(profiles_entries))
         profiles_df['user_id'] = profiles_df['user_id'].apply(str)
+        profiles_df['last_sync_ts'] = pd.to_datetime(profiles_df['last_sync_ts'])
+        profiles_df['last_location_ts'] = pd.to_datetime(profiles_df['last_location_ts'])
+        profiles_df['last_phone_data_ts'] = pd.to_datetime(profiles_df['last_phone_data_ts'])
+        profiles_df['last_diary_fetch_ts'] = pd.to_datetime(profiles_df['last_diary_fetch_ts'])
+        profiles_df['create_ts'] = pd.to_datetime(profiles_df['create_ts'])
+        profiles_df['update_ts'] = pd.to_datetime(profiles_df['update_ts'])
         profiles_df.drop(columns=["_id"], inplace=True)
     esdsq.store_dashboard_time(
         "admin/db_utils/query_users/query_profiles",
