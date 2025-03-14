@@ -98,4 +98,4 @@ def get_trajectories_columns(columns):
     return columns
 
 def get_token_prefix():
-    return permissions['token_prefix'] + '_' if permissions.get('token_prefix') else ''
+    return permissions.get('token_prefix', 'nrelop')
