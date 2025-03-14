@@ -266,6 +266,7 @@ def make_layout():
                 dcc.Store(id='store-excluded-uuids', data={}),  # list of UUIDs from excluded subgroups
                 dcc.Store(id='store-demographics', data={}),
                 dcc.Store(id='store-trajectories', data={}),
+                dcc.Store(id='store-label-options', data={}),
                 html.Div(id='page-content', children=make_home_page()),
             ])
         ]
@@ -399,6 +400,7 @@ extra_csp_url = [
     "https://*.tile.openstreetmap.org",
     "https://cdn.jsdelivr.net",
     "https://use.fontawesome.com",
+    "https://api.iconify.design",
     "https://www.nrel.gov",
     "data:",
     "blob:"
