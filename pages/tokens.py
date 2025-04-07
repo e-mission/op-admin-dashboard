@@ -7,7 +7,6 @@ from dash import dcc, html, Input, Output, callback, State, register_page, no_up
 import dash_ag_grid as dag
 
 import emission.storage.decorations.token_queries as esdt
-import emission.core.get_database as edb
 import emcommon.auth.opcode as emcao
 
 from utils.generate_qr_codes import make_qrcode_base64_img, make_qrcodes_zipfile
@@ -28,7 +27,7 @@ layout = html.Div(
         dcc.Store(id="store-qrcodes", data={}),
         html.Div([
             dcc.Markdown('## Tokens', style={'margin-right': 'auto'}),
-            # dbc.Button(children='Generate more tokens', id='open-modal-btn', n_clicks=0),
+            dbc.Button(children='Generate more tokens', id='open-modal-btn', n_clicks=0),
             dbc.Button(children='Export QR codes',
                        color='primary',
                        outline=True,
@@ -90,7 +89,7 @@ layout = html.Div(
     Input('store-tokens', 'data'),
 )
 def load_tokens(_):
-  return [e.get('token') for e in edb.get_token_db().find({})]
+    return esdt.get_all_tokens()
 
 
 @callback(
