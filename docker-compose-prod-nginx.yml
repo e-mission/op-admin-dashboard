@@ -16,8 +16,12 @@ services:
       DB_HOST: db
       WEB_SERVER_HOST: 0.0.0.0
       SERVER_BRANCH: master
-      CONFIG_PATH: "https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/configs/"
       STUDY_CONFIG: "stage-program"
+      CONFIG_REPO: "e-mission/nrel-openpath-deploy-configs"
+      CONFIG_UDPATES_WORKFLOW: "config-update.yml"
+      CONFIG_UPDATES_GH_APP_PRIVATE_KEY: ""
+      CONFIG_UPDATES_GH_APP_ID: ""
+      CONFIG_UPDATES_GH_APP_INSTALLATION_ID: ""
       AUTH_TYPE: "basic" # the other option is cognito
       DASH_REQUESTS_PATHNAME_PREFIX: "/admin/"
       REACT_VERSION: "18.2.0"
