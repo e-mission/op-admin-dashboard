@@ -50,7 +50,7 @@ layout = html.Div(
                 ]),
                 html.Div([
                     dbc.Label('Token Length'),
-                    dbc.Input(value=10, id='token-length', type='number', min=6, max=100, required=True),
+                    dbc.Input(value=16, id='token-length', type='number', min=16, max=48, required=True),
                 ]),
                 html.Div([
                     dbc.Label('Token Subgroup'),
