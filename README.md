@@ -27,23 +27,21 @@ This setting tests that configuration using an embedded reverse proxy in the doc
 
 ## Set Variables
 
-### CONFIG_PATH
-
-The `CONFIG_PATH` environment variable is used to specify the location of the configuration files that are required for
-a Docker container to run properly. This means that the Docker container will attempt to download the configuration
-files from the specified URL. The current path to the raw format of nrel configs is:
-
-https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/configs/
-
-
 ### STUDY_CONFIG
 
-The `STUDY_CONFIG` environment variable is used to specify the name of the study or program that is being run inside the
-Docker container. This variable is typically used by the application running inside the container to differentiate
-between different studies or programs.
+`STUDY_CONFIG` specifies the name of the study or program for which dashboard is running. It should refer to one of the deployoments in the `CONFIG_REPO`.
 
-Note that the `STUDY_CONFIG` variable can be set to any string value, and should be set to a unique value for each
-separate study or program.
+### CONFIG_REPO
+
+`CONFIG_REPO` specifies the GitHub repository containing deployment configuration files, which modify the behavior of the dashboard for individual studies or programs.
+For NREL-hosted deployments, this value is `e-mission/nrel-openpath-deploy-configs`, so the dashboard fetches config files from `https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/configs/`.
+
+Certain updates to these configuration files, such as inviting other administrators, can be made through the dashboard itself, given that credentials for a GitHub App installed in `CONFIG_REPO` are provided by additional environment variables:
+- `CONFIG_UPDATES_GH_APP_PRIVATE_KEY`
+- `CONFIG_UPDATES_GH_APP_ID`
+- `CONFIG_UPDATES_GH_APP_INSTALLATION_ID`
+
+The app needs permission to trigger a GitHub Action and create a pull request on the `CONFIG_REPO`.
 
 ## User Permissions
 
