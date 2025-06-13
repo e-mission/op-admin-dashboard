@@ -103,9 +103,6 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
             stage1_timer
         )
 
-        #explanation: when i take a 20 min walk with a # of minutes there is a big amount of data
-        #when a trip is labelled the data is saved here
-
         # Stage 2: Retrieve aggregate time series
         with ect.Timer() as stage2_timer:
             ts = esta.TimeSeries.get_aggregate_time_series()
@@ -339,13 +336,6 @@ def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
             "admin/db_utils/query_trajectories/convert_date_range_to_timestamps",
             stage1_timer
         )
-        #break that range and
-
-        #TODO:
-        #Get the data as normal when the limit is hit break data in time based chunks
-        #and query for a smaller range (rec: day by day)
-        #should be configurable based on the quantity of data expected
-        #cache the rest !!
 
         # Stage 2: Retrieve entries from the time series
         with ect.Timer() as stage2_timer:
