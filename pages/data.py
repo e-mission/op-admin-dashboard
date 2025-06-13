@@ -4,12 +4,20 @@ Note that the callback will trigger even if prevent_initial_call=True. This is b
 Since the dcc.Location component is not in the layout when navigating to this page, it triggers the callback.
 The workaround is to check if the input value is None.
 """
-from dash import dcc, html, Input, Output, callback, register_page, State, set_props, MATCH
+from dash import dcc, html, Input, Output, callback, register_page, State, set_props, MATCH, no_update
 import dash_ag_grid as dag
 import arrow
 import logging
 import pandas as pd
 from dash.exceptions import PreventUpdate
+
+
+import io
+import zipfile
+from datetime import datetime, timedelta
+
+import dash_bootstrap_components as dbc
+
 
 from utils import constants
 from utils import permissions as perm_utils
@@ -460,10 +468,16 @@ def populate_datatable(df, store_uuids, table_id):
                     "height": "600px",
                 },
               ),
-              html.Button(
-                  "Download CSV",
-                  id={"type": "download-csv-btn", "id": table_id},
+              dcc.Loading(
+                  children=html.Button(
+                      "Download ZIP",
+                      id={"type": "download-zip-btn", "id": table_id},
+                  ),
+                  type="default",
+                  style={"display": "inline-block"}
               ),
+              dcc.Download(id={"type": "download-csv-btn", "id": table_id}),
+              dcc.Download(id='download-trajectories-zip'),
             ])
         esdsq.store_dashboard_time(
             "admin/data/populate_datatable/create_datatable",
@@ -478,13 +492,50 @@ def populate_datatable(df, store_uuids, table_id):
 
 
 @callback(
-    Output({"type": "data_table", "id": MATCH}, "exportDataAsCsv"),
-    Output({"type": "download-csv-btn", "id": MATCH}, "csvExportParams"),
-    Output({"type": "download-csv-btn", "id": MATCH}, "n_clicks"),
-    Input({"type": "download-csv-btn", "id": MATCH}, "n_clicks"),
+    Output({"type": "download-csv-btn", "id": MATCH}, "data"),
+    Input({"type": "download-zip-btn", "id": MATCH}, "n_clicks"),
+    State({"type": "data_table", "id": MATCH}, "rowData"),
+    State("date-picker", "start_date"),
+    State("date-picker", "end_date"),
+    prevent_initial_call=True,
 )
-def export_table_as_csv(n_clicks):
-    if not n_clicks:
-        raise PreventUpdate
-    return True, {"fileName": "tokens-table.csv"}, 0
-
+def export_table_as_csv(n_clicks, table_data, start_date, end_date):
+    if not n_clicks or not table_data:
+        return no_update
+    
+    # Create ZIP file in memory
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED, compresslevel=1) as zip_file:
+        # Convert table data to DataFrame
+        df = pd.DataFrame(table_data)
+        
+        # Optional: Limit rows for very large datasets to prevent browser crashes
+        MAX_ROWS = 100000  # Adjust this limit as needed
+        original_rows = len(df)
+        if len(df) > MAX_ROWS:
+            df = df.head(MAX_ROWS)
+            logging.warning(f"Dataset truncated from {original_rows} to {MAX_ROWS} rows for export")
+        
+        # Simple export - no complex chunking
+        csv_content = df.to_csv(index=False)
+        filename = f"data_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        zip_file.writestr(filename, csv_content)
+        
+        # Add simple summary
+        summary_data = {
+            'total_records': len(df),
+            'original_records': original_rows,
+            'truncated': original_rows > MAX_ROWS,
+            'date_range': f"{start_date} to {end_date}" if start_date and end_date else "All data",
+            'export_timestamp': datetime.now().isoformat(),
+            'columns': ', '.join(df.columns.tolist())
+        }
+        summary_df = pd.DataFrame([summary_data])
+        zip_file.writestr("export_summary.csv", summary_df.to_csv(index=False))
+    
+    zip_buffer.seek(0)
+    
+    # Return the ZIP file for download
+    filename = f"data_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    return dcc.send_bytes(zip_buffer.getvalue(), filename)
