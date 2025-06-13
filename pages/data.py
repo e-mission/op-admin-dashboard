@@ -495,11 +495,12 @@ def populate_datatable(df, store_uuids, table_id):
     Output({"type": "download-csv-btn", "id": MATCH}, "data"),
     Input({"type": "download-zip-btn", "id": MATCH}, "n_clicks"),
     State({"type": "data_table", "id": MATCH}, "rowData"),
+    State({"type": "data_table", "id": MATCH}, "id"),
     State("date-picker", "start_date"),
     State("date-picker", "end_date"),
     prevent_initial_call=True,
 )
-def export_table_as_csv(n_clicks, table_data, start_date, end_date):
+def export_table_as_csv(n_clicks, table_data, table_id_dict, start_date, end_date):
     if not n_clicks or not table_data:
         return no_update
     
@@ -510,20 +511,66 @@ def export_table_as_csv(n_clicks, table_data, start_date, end_date):
         # Convert table data to DataFrame
         df = pd.DataFrame(table_data)
         
-        # Simple export - no complex chunking
-        csv_content = df.to_csv(index=False)
-        filename = f"data_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        zip_file.writestr(filename, csv_content)
-        
-        # Add simple summary
-        summary_data = {
-            'total_records': len(df),
-            'date_range': f"{start_date} to {end_date}" if start_date and end_date else "All data",
-            'export_timestamp': datetime.now().isoformat(),
-            'columns': ', '.join(df.columns.tolist())
-        }
-        summary_df = pd.DataFrame([summary_data])
-        zip_file.writestr("export_summary.csv", summary_df.to_csv(index=False))
+        # Check if this is trajectories data and separate by day
+        if table_id_dict['id'] == 'trajectories' and 'data_ts' in df.columns:
+            # Convert timestamps to dates and group by day
+            df['date'] = df['data_ts'].apply(lambda ts: arrow.get(ts).format('YYYY-MM-DD') if pd.notna(ts) else 'unknown')
+            
+            # Group trajectories by date
+            daily_groups = df.groupby('date')
+            
+            # Create separate CSV for each day
+            for date, group_df in daily_groups:
+                # Remove the temporary date column for export
+                export_df = group_df.drop('date', axis=1)
+                csv_content = export_df.to_csv(index=False)
+                filename = f"trajectories_{date}.csv"
+                zip_file.writestr(filename, csv_content)
+            
+            # Add summary with daily breakdown
+            summary_data = []
+            for date, group_df in daily_groups:
+                summary_data.append({
+                    'date': date,
+                    'trajectory_count': len(group_df),
+                    'unique_users': group_df['user_id'].nunique() if 'user_id' in group_df.columns else 'N/A'
+                })
+            
+            summary_data.append({
+                'date': 'TOTAL',
+                'trajectory_count': len(df),
+                'unique_users': df['user_id'].nunique() if 'user_id' in df.columns else 'N/A'
+            })
+            
+            summary_df = pd.DataFrame(summary_data)
+            zip_file.writestr("daily_summary.csv", summary_df.to_csv(index=False))
+            
+            # Add overall export summary
+            export_summary = {
+                'total_records': len(df),
+                'total_days': len(daily_groups),
+                'date_range': f"{start_date} to {end_date}" if start_date and end_date else "All data",
+                'export_timestamp': datetime.now().isoformat(),
+                'columns': ', '.join([col for col in df.columns if col != 'date'])
+            }
+            export_summary_df = pd.DataFrame([export_summary])
+            zip_file.writestr("export_summary.csv", export_summary_df.to_csv(index=False))
+            
+        else:
+            # Simple export for non-trajectories data (original behavior)
+            csv_content = df.to_csv(index=False)
+            filename = f"data_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            zip_file.writestr(filename, csv_content)
+            
+            # Add simple summary
+            summary_data = {
+                'total_records': len(df),
+                'date_range': f"{start_date} to {end_date}" if start_date and end_date else "All data",
+                'export_timestamp': datetime.now().isoformat(),
+                'columns': ', '.join(df.columns.tolist())
+            }
+            summary_df = pd.DataFrame([summary_data])
+            zip_file.writestr("export_summary.csv", summary_df.to_csv(index=False))
     
     zip_buffer.seek(0)
     
