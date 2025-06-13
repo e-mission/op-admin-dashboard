@@ -510,13 +510,6 @@ def export_table_as_csv(n_clicks, table_data, start_date, end_date):
         # Convert table data to DataFrame
         df = pd.DataFrame(table_data)
         
-        # Optional: Limit rows for very large datasets to prevent browser crashes
-        MAX_ROWS = 100000  # Adjust this limit as needed
-        original_rows = len(df)
-        if len(df) > MAX_ROWS:
-            df = df.head(MAX_ROWS)
-            logging.warning(f"Dataset truncated from {original_rows} to {MAX_ROWS} rows for export")
-        
         # Simple export - no complex chunking
         csv_content = df.to_csv(index=False)
         filename = f"data_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
@@ -525,8 +518,6 @@ def export_table_as_csv(n_clicks, table_data, start_date, end_date):
         # Add simple summary
         summary_data = {
             'total_records': len(df),
-            'original_records': original_rows,
-            'truncated': original_rows > MAX_ROWS,
             'date_range': f"{start_date} to {end_date}" if start_date and end_date else "All data",
             'export_timestamp': datetime.now().isoformat(),
             'columns': ', '.join(df.columns.tolist())
