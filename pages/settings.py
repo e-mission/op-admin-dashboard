@@ -41,9 +41,9 @@ layout = html.Div(
                 dbc.Form([
                     dbc.Row(
                         [
-                            dbc.Label("Add Email", width="auto"),
+                            dbc.Label("Invite User:", width="auto"),
                             dbc.Col(
-                                dbc.Input(type="email", id="email",
+                                dbc.Input(type="email", id="invite-admin-email",
                                           placeholder="Enter email"),
                                 className="me-3",
                             ),
@@ -101,7 +101,7 @@ def get_current_admins(_, data):
 
 @callback(
     Output("admin-access-submit-button", "disabled"),
-    Input("email", "value"),
+    Input("invite-admin-email", "value"),
 )
 def disable_submit_button(email):
     if email and re.match(r'^[\w\.-]+@[\w\.-]+\.\w{2,}$', email):
@@ -111,16 +111,18 @@ def disable_submit_button(email):
 
 @callback(
     Output("config-update-status", "data"),
-    Output("email", "value"),
+    Output("invite-admin-email", "value"),
     Input("admin-access-submit-button", "n_clicks"),
-    State("email", "value"),
+    State("invite-admin-email", "value"),
+    State("user-email", "data"),
     prevent_initial_call=True,
 )
-def submit_email(_, email):
+def submit_email(_, invite_admin_email, user_email):
     status_code = trigger_config_update_workflow({
         'deployment': os.getenv('STUDY_CONFIG'),
+        'user_email': user_email,
         'script_name': 'update_admin_access',
-        'script_args': f'add {email}',
+        'script_args': f'add {invite_admin_email}',
     })
     if status_code == 204:
         return {'id': None}, None
