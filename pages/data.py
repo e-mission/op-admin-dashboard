@@ -498,75 +498,153 @@ def populate_datatable(df, store_uuids, table_id):
     State({"type": "data_table", "id": MATCH}, "id"),
     State("date-picker", "start_date"),
     State("date-picker", "end_date"),
+    State("date-picker-timezone", "value"),
+    State("store-excluded-uuids", "data"),
+    State("keylist-switch", "value"),
     prevent_initial_call=True,
 )
-def export_table_as_csv(n_clicks, table_data, table_id_dict, start_date, end_date):
-    if not n_clicks or not table_data:
+def export_table_as_csv(n_clicks, table_data, table_id_dict, start_date, end_date, timezone, store_excluded_uuids, key_list):
+    if not n_clicks:
         return no_update
     
     # Create ZIP file in memory
     zip_buffer = io.BytesIO()
     
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED, compresslevel=1) as zip_file:
-        # Convert table data to DataFrame
-        df = pd.DataFrame(table_data)
         
-        # Check if this is trajectories data and separate by day
-        if table_id_dict['id'] == 'trajectories' and 'data_ts' in df.columns:
-            # Convert timestamps to dates and group by day
-            df['date'] = df['data_ts'].apply(lambda ts: arrow.get(ts).format('YYYY-MM-DD') if pd.notna(ts) else 'unknown')
+        #special handling for trajectories using chunked download
+        if table_id_dict['id'] == 'trajectories':
+            logging.info("Starting chunked trajectory export...")
             
-            # Group trajectories by date
-            daily_groups = df.groupby('date')
+            #use chunked download to get complete data beyond 250k limit
+            from utils.db_utils import query_all_trajectories_chunked
+            from utils.datetime_utils import iso_to_date_only
             
-            # Create separate CSV for each day
-            for date, group_df in daily_groups:
-                # Remove the temporary date column for export
-                export_df = group_df.drop('date', axis=1)
-                csv_content = export_df.to_csv(index=False)
-                filename = f"trajectories_{date}.csv"
-                zip_file.writestr(filename, csv_content)
+            #convert dates for the chunked query
+            (start_date_only, end_date_only) = iso_to_date_only(start_date, end_date)
             
-            # Add summary with daily breakdown
-            summary_data = []
-            for date, group_df in daily_groups:
+            #track daily data and overall statistics
+            daily_data = {}
+            total_records = 0
+            total_chunks = 0
+            all_columns = set()
+            unique_users = set()
+            
+            try:
+                #process data in chunks to avoid memory issues
+                for chunk_df in query_all_trajectories_chunked(
+                    start_date_only, end_date_only, timezone, key_list, store_excluded_uuids["data"]
+                ):
+                    total_chunks += 1
+                    chunk_records = len(chunk_df)
+                    total_records += chunk_records
+                    
+                    logging.info(f"Processing chunk {total_chunks} with {chunk_records} records "
+                               f"(Total processed: {total_records})")
+                    
+                    if not chunk_df.empty:
+                        #track columns and users
+                        all_columns.update(chunk_df.columns)
+                        if 'user_id' in chunk_df.columns:
+                            unique_users.update(chunk_df['user_id'].unique())
+                        
+                        #process timestamp column for daily grouping
+                        if 'data.ts' in chunk_df.columns:
+                            chunk_df['date'] = chunk_df['data.ts'].apply(
+                                lambda ts: arrow.get(ts).format('YYYY-MM-DD') if pd.notna(ts) else 'unknown'
+                            )
+                            
+                            #group this chunk's data by date
+                            for date, group_df in chunk_df.groupby('date'):
+                                if date not in daily_data:
+                                    daily_data[date] = []
+                                
+                                #remove the temporary date column for storage
+                                export_df = group_df.drop('date', axis=1)
+                                daily_data[date].append(export_df)
+                        else:
+                            #fallback: add to unknown date if no timestamp
+                            if 'unknown' not in daily_data:
+                                daily_data['unknown'] = []
+                            daily_data['unknown'].append(chunk_df)
+                
+                logging.info(f"Chunked download complete: {total_records} total records across {total_chunks} chunks")
+                
+                #create CSV files for each day
+                summary_data = []
+                for date, daily_chunks in daily_data.items():
+                    #combine all chunks for this date
+                    day_df = pd.concat(daily_chunks, ignore_index=True) if daily_chunks else pd.DataFrame()
+                    
+                    if not day_df.empty:
+                        csv_content = day_df.to_csv(index=False)
+                        filename = f"trajectories_{date}.csv"
+                        zip_file.writestr(filename, csv_content)
+                        
+                        #track daily summary
+                        day_users = day_df['user_id'].nunique() if 'user_id' in day_df.columns else 0
+                        summary_data.append({
+                            'date': date,
+                            'trajectory_count': len(day_df),
+                            'unique_users': day_users
+                        })
+                
+                #add overall totals to summary
                 summary_data.append({
-                    'date': date,
-                    'trajectory_count': len(group_df),
-                    'unique_users': group_df['user_id'].nunique() if 'user_id' in group_df.columns else 'N/A'
+                    'date': 'TOTAL',
+                    'trajectory_count': total_records,
+                    'unique_users': len(unique_users)
                 })
-            
-            summary_data.append({
-                'date': 'TOTAL',
-                'trajectory_count': len(df),
-                'unique_users': df['user_id'].nunique() if 'user_id' in df.columns else 'N/A'
-            })
-            
-            summary_df = pd.DataFrame(summary_data)
-            zip_file.writestr("daily_summary.csv", summary_df.to_csv(index=False))
-            
-            # Add overall export summary
-            export_summary = {
-                'total_records': len(df),
-                'total_days': len(daily_groups),
-                'date_range': f"{start_date} to {end_date}" if start_date and end_date else "All data",
-                'export_timestamp': datetime.now().isoformat(),
-                'columns': ', '.join([col for col in df.columns if col != 'date'])
-            }
-            export_summary_df = pd.DataFrame([export_summary])
-            zip_file.writestr("export_summary.csv", export_summary_df.to_csv(index=False))
-            
+                
+                #create daily summary CSV
+                if summary_data:
+                    summary_df = pd.DataFrame(summary_data)
+                    zip_file.writestr("daily_summary.csv", summary_df.to_csv(index=False))
+                
+                #create overall export summary
+                export_summary = {
+                    'total_records': total_records,
+                    'total_chunks_processed': total_chunks,
+                    'total_days': len([d for d in daily_data.keys() if d != 'unknown']),
+                    'date_range': f"{start_date} to {end_date}" if start_date and end_date else "All data",
+                    'export_timestamp': datetime.now().isoformat(),
+                    'key_list': key_list,
+                    'chunked_download': True,
+                    'columns': ', '.join(sorted(all_columns))
+                }
+                export_summary_df = pd.DataFrame([export_summary])
+                zip_file.writestr("export_summary.csv", export_summary_df.to_csv(index=False))
+                
+                logging.info(f"Export complete: {total_records} records across {len(daily_data)} days")
+                
+            except Exception as e:
+                logging.error(f"Error during chunked trajectory export: {str(e)}")
+                #create error file in the ZIP
+                error_info = {
+                    'error': str(e),
+                    'export_timestamp': datetime.now().isoformat(),
+                    'partial_records_processed': total_records,
+                    'chunks_processed': total_chunks
+                }
+                error_df = pd.DataFrame([error_info])
+                zip_file.writestr("export_error.csv", error_df.to_csv(index=False))
+        
         else:
-            # Simple export for non-trajectories data (original behavior)
+            #original behavior for non-trajectories data
+            if not table_data:
+                return no_update
+                
+            df = pd.DataFrame(table_data)
             csv_content = df.to_csv(index=False)
             filename = f"data_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
             zip_file.writestr(filename, csv_content)
             
-            # Add simple summary
+            #add simple summary
             summary_data = {
                 'total_records': len(df),
                 'date_range': f"{start_date} to {end_date}" if start_date and end_date else "All data",
                 'export_timestamp': datetime.now().isoformat(),
+                'chunked_download': False,
                 'columns': ', '.join(df.columns.tolist())
             }
             summary_df = pd.DataFrame([summary_data])

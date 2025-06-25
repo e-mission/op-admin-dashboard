@@ -103,6 +103,9 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
             stage1_timer
         )
 
+        #explanation: when i take a 20 min walk with a # of minutes there is a big amount of data
+        #when a trip is labelled the data is saved here
+
         # Stage 2: Retrieve aggregate time series
         with ect.Timer() as stage2_timer:
             ts = esta.TimeSeries.get_aggregate_time_series()
@@ -336,6 +339,13 @@ def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
             "admin/db_utils/query_trajectories/convert_date_range_to_timestamps",
             stage1_timer
         )
+        #break that range and
+
+        #TODO:
+        #Get the data as normal when the limit is hit break data in time based chunks
+        #and query for a smaller range (rec: day by day)
+        #should be configurable based on the quantity of data expected
+        #cache the rest !!
 
         # Stage 2: Retrieve entries from the time series
         with ect.Timer() as stage2_timer:
@@ -348,6 +358,8 @@ def query_trajectories(start_date: str, end_date: str, tz: str, key_list):
             "admin/db_utils/query_trajectories/retrieve_entries",
             stage2_timer
         )
+        # IMPORTANT
+        #convert queries into a list save date of the last query and request the next 250k from there.
 
         # Stage 3: Convert entries to DataFrame
         with ect.Timer() as stage3_timer:
@@ -486,8 +498,149 @@ def query_segments_crossing_endpoints(poly_region_start, poly_region_end, start_
 # The following query can be called multiple times, let's open db only once
 analysis_timeseries_db = edb.get_analysis_timeseries_db()
 
+
 # Fetches sensed_mode for each section in a list
 # sections format example: [{'section': ObjectId('648d02b227fd2bb6635414a0'), 'user_id': UUID('6d7edf29-8b3f-451b-8d66-984cb8dd8906')}]
 def query_inferred_sections_modes(sections):
     return esds.cleaned2inferred_section_list(sections)
+
+
+def query_all_trajectories_chunked(start_date: str, end_date: str, tz: str, key_list, excluded_uuids, chunk_limit=250000):
+    """
+    Query trajectories using timestamp-based pagination to handle large datasets.
+    Yields chunks of trajectory data that can be processed incrementally.
+    
+    Args:
+        start_date: Start date in ISO format
+        end_date: End date in ISO format  
+        tz: Timezone string
+        key_list: List of trajectory keys to query
+        excluded_uuids: List of UUIDs to exclude
+        chunk_limit: Maximum records per chunk (default 250k)
+        
+    Yields:
+        DataFrame chunks of trajectory data
+    """
+    import emission.storage.timeseries.timequery as estt
+    import emission.core.wrapper.motionactivity as ecwm
+    import enum
+    
+    with ect.Timer() as total_timer:
+        key_list = [key_list] if isinstance(key_list, str) else key_list
+        
+        # Stage 1: Convert date range to timestamps and setup
+        with ect.Timer() as stage1_timer:
+            (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
+            
+            current_start_ts = start_ts
+            chunk_count = 0
+            total_records = 0
+            
+            logging.info(f"Starting chunked trajectory download for date range: {start_date} to {end_date}")
+            logging.info(f"Using timestamp-based pagination with {chunk_limit} records per chunk")
+            
+        esdsq.store_dashboard_time(
+            "admin/db_utils/query_all_trajectories_chunked/setup",
+            stage1_timer
+        )
+        
+        # Stage 2: Iterate through chunks using timestamp pagination
+        while current_start_ts < end_ts:
+            with ect.Timer() as chunk_timer:
+                chunk_count += 1
+                
+                # Build MongoDB query for this chunk
+                mongo_query = {
+                    "metadata.key": {"$in": key_list},
+                    "data.ts": {"$gte": current_start_ts, "$lt": end_ts}
+                }
+                
+                # Add UUID exclusion to the query
+                if excluded_uuids:
+                    excluded_uuid_objects = [UUID(uuid) for uuid in excluded_uuids]
+                    mongo_query["user_id"] = {"$nin": excluded_uuid_objects}
+                
+                # Query this chunk with limit
+                db = edb.get_analysis_timeseries_db()
+                cursor = db.find(mongo_query).sort("data.ts", 1).limit(chunk_limit)
+                entries = list(cursor)
+                
+                if not entries:
+                    logging.info(f"Chunk {chunk_count}: No more data found, stopping pagination")
+                    break
+                
+                chunk_records = len(entries)
+                total_records += chunk_records
+                
+                logging.info(f"Chunk {chunk_count}: Retrieved {chunk_records} records "
+                           f"(Total so far: {total_records})")
+                
+                # Convert to DataFrame and process
+                df = pd.json_normalize(entries)
+                
+                if not df.empty:
+                    # Apply the same processing as the original query_trajectories function
+                    for col in df.columns:
+                        if df[col].dtype == 'object':
+                            df[col] = df[col].apply(str)
+
+                    # Drop metadata columns
+                    columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
+                    df.drop(columns=columns_to_drop, inplace=True)
+
+                    # Drop excluded trajectory columns
+                    for col in constants.EXCLUDED_TRAJECTORIES_COLS:
+                        if col in df.columns:
+                            df.drop(columns=[col], inplace=True)
+
+                    # Add human-readable mode string
+                    if 'background/location' in key_list:
+                        if 'data.mode' in df.columns:
+                            df['data.mode'] = ''
+                    else:
+                        if 'data.mode' in df.columns:
+                            df['data.mode_str'] = df['data.mode'].apply(
+                                lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
+                            )
+                    
+                    # Sort by timestamp to ensure consistent ordering
+                    if 'data.ts' in df.columns:
+                        df = df.sort_values('data.ts').reset_index(drop=True)
+                    
+                    yield df
+                    
+                    # Determine next starting timestamp for pagination
+                    if chunk_records == chunk_limit:
+                        # We got a full chunk, so there might be more data
+                        # Use the timestamp of the last record + 1 microsecond to continue
+                        if 'data.ts' in df.columns and not df.empty:
+                            last_ts = df['data.ts'].iloc[-1]
+                            # Convert to float and add small increment for next query
+                            current_start_ts = float(last_ts) + 0.000001
+                        else:
+                            # Fallback: we shouldn't get here, but break to avoid infinite loop
+                            logging.warning("No timestamp column found in results, stopping pagination")
+                            break
+                    else:
+                        # We got less than the chunk limit, so we've reached the end
+                        logging.info(f"Chunk {chunk_count}: Retrieved {chunk_records} < {chunk_limit} records, "
+                                   f"reached end of data")
+                        break
+                else:
+                    # Empty DataFrame, stop pagination
+                    break
+                    
+            esdsq.store_dashboard_time(
+                f"admin/db_utils/query_all_trajectories_chunked/chunk_{chunk_count}",
+                chunk_timer
+            )
+
+        logging.info(f"Chunked download complete: {total_records} total records across {chunk_count} chunks")
+
+    esdsq.store_dashboard_time(
+        "admin/db_utils/query_all_trajectories_chunked/total_time",
+        total_timer
+    )
+
+    return  # Generator function ends here
 
