@@ -532,8 +532,13 @@ def export_table_as_csv(n_clicks, table_data, table_id_dict, start_date, end_dat
             
             try:
                 #process data in chunks to avoid memory issues
+                date_query = {
+                    'start_date': start_date_only,
+                    'end_date': end_date_only,
+                    'tz': timezone
+                }
                 for chunk_df in query_all_trajectories_chunked(
-                    start_date_only, end_date_only, timezone, key_list, store_excluded_uuids["data"]
+                    date_query, key_list, store_excluded_uuids["data"]
                 ):
                     total_chunks += 1
                     chunk_records = len(chunk_df)

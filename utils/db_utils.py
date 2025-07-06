@@ -505,129 +505,106 @@ def query_inferred_sections_modes(sections):
     return esds.cleaned2inferred_section_list(sections)
 
 
-def query_entries_chunked(key_list, start_date: str, end_date: str, tz: str,
+def query_entries_chunked(key_list, date_query,
                             geo_query=None, extra_query_list=None, chunk_limit=250000):
     """
-    Query entries using time-range chunking with emission library methods.
-    Uses ts.find_entries with smaller time windows to handle large datasets.
+    Query entries using repeated emission find_entries calls, updating the start timestamp after each batch.
+    Downloads exactly chunk_limit records per batch, using the last timestamp as the start for the next batch.
     
-    Args:
-        key_list: List of keys to query
-        start_date: Start date in ISO format
-        end_date: End date in ISO format  
-        tz: Timezone string
-        geo_query: Geo query to apply
-        extra_query_list: List of extra queries to apply
-        chunk_limit: Target records per time chunk (default 250k)
-        
-    Yields:
-        DataFrame chunks of entry data
+    :param key_list: List of keys to query
+    :type key_list: list or str
+    :param date_query: Dictionary containing start_date, end_date, and tz
+    :type date_query: dict
+    :param geo_query: Geo query to apply
+    :type geo_query: optional
+    :param extra_query_list: List of extra queries to apply
+    :type extra_query_list: list, optional
+    :param chunk_limit: Fixed records per chunk (default 250k)
+    :type chunk_limit: int
+    
+    :yields: DataFrame chunks of entry data
+    :rtype: pandas.DataFrame
     """
     import emission.storage.timeseries.timequery as estt
-    
+
     with ect.Timer() as total_timer:
         key_list = [key_list] if isinstance(key_list, str) else key_list
-        
-        #stage 1: convert date range to timestamps and setup
+
+        # Stage 1: extract date parameters and convert date range to timestamps and setup
         with ect.Timer() as stage1_timer:
+            start_date = date_query['start_date']
+            end_date = date_query['end_date']
+            tz = date_query['tz']
             (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
-            
-            #calculate initial time window (start with 1 day chunks)
-            time_window_seconds = 24 * 60 * 60  # 1 day
-            current_start_ts = start_ts
             chunk_count = 0
             total_records = 0
-            
             logging.info(f"Starting chunked entry download for date range: {start_date} to {end_date}")
-            logging.info(f"Using emission library ts.find_entries with adaptive time windows")
-            
+            logging.info(f"Using repeated emission find_entries with {chunk_limit} records per chunk")
         esdsq.store_dashboard_time(
             "admin/db_utils/query_entries_chunked/setup",
             stage1_timer
         )
-        
-        #stage 2: iterate through time chunks using emission library methods
+
+        current_start_ts = start_ts
         while current_start_ts < end_ts:
             with ect.Timer() as chunk_timer:
                 chunk_count += 1
-                
-                #calculate end timestamp for this chunk
-                current_end_ts = min(current_start_ts + time_window_seconds, end_ts)
-                
-                #use emission library method instead of raw mongo
                 ts = esta.TimeSeries.get_aggregate_time_series()
-                
-                #create time query for this chunk
-                time_query = estt.TimeQuery("data.ts", current_start_ts, current_end_ts)
-                
-                #query using emission library method
+                time_query = estt.TimeQuery("data.ts", current_start_ts, end_ts)
                 entries = ts.find_entries(
                     key_list=key_list,
                     time_query=time_query,
                     geo_query=geo_query,
                     extra_query_list=extra_query_list
                 )
-                
-                #convert to list to get count and check if we need to adjust window size
                 entries_list = list(entries)
                 chunk_records = len(entries_list)
                 total_records += chunk_records
-                
-                logging.info(f"Chunk {chunk_count}: Retrieved {chunk_records} records "
-                           f"for time window {current_start_ts} to {current_end_ts} "
-                           f"(Total so far: {total_records})")
-                
-                #adaptive window sizing based on record count
-                if chunk_records > chunk_limit * 1.5:
-                    #too many records, reduce window size for next iteration
-                    time_window_seconds = max(time_window_seconds // 2, 3600)  # min 1 hour
-                    logging.info(f"Large chunk detected ({chunk_records} records), reducing window to {time_window_seconds}s")
-                elif chunk_records < chunk_limit * 0.1:
-                    #very few records, increase window size for efficiency
-                    time_window_seconds = min(time_window_seconds * 2, 7 * 24 * 60 * 60)  # max 1 week
-                    logging.info(f"Small chunk detected ({chunk_records} records), increasing window to {time_window_seconds}s")
-                
-                if entries_list:
-                    #convert to DataFrame
-                    df = pd.json_normalize(entries_list)
-                    yield df
-                
-                #move to next time window
-                current_start_ts = current_end_ts
-                
-                #break if we've reached the end
-                if current_start_ts >= end_ts:
+                logging.info(f"Chunk {chunk_count}: Found {chunk_records} records (Total so far: {total_records})")
+                if chunk_records == 0:
+                    logging.info("No more records found, download complete")
                     break
-                    
+                # Convert to DataFrame
+                df = pd.json_normalize(entries_list[:chunk_limit])
+                yield df
+                if chunk_records < chunk_limit:
+                    logging.info(f"Got {chunk_records} records (< {chunk_limit}), download complete")
+                    break
+                # Prepare for next batch: get max timestamp from this chunk
+                if 'data.ts' in df.columns:
+                    last_timestamp = df['data.ts'].iloc[-1]
+                    current_start_ts = last_timestamp + 0.000001  # Avoid duplicate
+                    logging.info(f"Next chunk will start from timestamp: {current_start_ts}")
+                else:
+                    logging.warning("No 'data.ts' column found in results, stopping chunked download")
+                    break
             esdsq.store_dashboard_time(
                 f"admin/db_utils/query_entries_chunked/chunk_{chunk_count}",
                 chunk_timer
             )
-
-        logging.info(f"Chunked download complete: {total_records} total records across {chunk_count} time windows")
-
+        logging.info(f"Chunked download complete: {total_records} total records across {chunk_count} chunks")
     esdsq.store_dashboard_time(
         "admin/db_utils/query_entries_chunked/total_time",
         total_timer
     )
+    return  # generator function ends here
 
-    return  #generator function ends here
-
-def query_all_trajectories_chunked(start_date: str, end_date: str, tz: str, key_list, excluded_uuids, chunk_limit=250000):
+def query_all_trajectories_chunked(date_query, key_list, excluded_uuids, chunk_limit=250000):
     """
-    Query trajectories using time-range chunking with emission library methods.
-    Uses ts.find_entries with smaller time windows to handle large datasets.
+    Query trajectories using fixed record limit chunks with timestamp-based continuation.
+    Downloads exactly chunk_limit records per batch, using the last timestamp as the start for the next batch.
     
-    Args:
-        start_date: Start date in ISO format
-        end_date: End date in ISO format  
-        tz: Timezone string
-        key_list: List of trajectory keys to query
-        excluded_uuids: List of UUIDs to exclude
-        chunk_limit: Target records per time chunk (default 250k)
-        
-    Yields:
-        DataFrame chunks of trajectory data
+    :param date_query: Dictionary containing start_date, end_date, and tz
+    :type date_query: dict
+    :param key_list: List of trajectory keys to query
+    :type key_list: list
+    :param excluded_uuids: List of UUIDs to exclude
+    :type excluded_uuids: list
+    :param chunk_limit: Fixed records per chunk (default 250k)
+    :type chunk_limit: int
+    
+    :yields: DataFrame chunks of trajectory data
+    :rtype: pandas.DataFrame
     """
     import emission.core.wrapper.motionactivity as ecwm
     import enum
@@ -637,25 +614,25 @@ def query_all_trajectories_chunked(start_date: str, end_date: str, tz: str, key_
         excluded_uuid_objects = [UUID(uuid) for uuid in excluded_uuids]
         extra_query_list.append({"user_id": {"$nin": excluded_uuid_objects}})
 
-    for df in query_entries_chunked(key_list, start_date, end_date, tz,
+    for df in query_entries_chunked(key_list, date_query,
                                      extra_query_list=extra_query_list,
                                      chunk_limit=chunk_limit):
         if not df.empty:
-            #apply the same processing as the original query_trajectories function
+            # Apply the same processing as the original query_trajectories function
             for col in df.columns:
                 if df[col].dtype == 'object':
                     df[col] = df[col].apply(str)
 
-            #drop metadata columns
+            # Drop metadata columns
             columns_to_drop = [col for col in df.columns if col.startswith("metadata")]
             df.drop(columns=columns_to_drop, inplace=True)
 
-            #drop excluded trajectory columns
+            # Drop excluded trajectory columns
             for col in constants.EXCLUDED_TRAJECTORIES_COLS:
                 if col in df.columns:
                     df.drop(columns=[col], inplace=True)
 
-            #add human-readable mode string
+            # Add human-readable mode string
             if 'background/location' in key_list:
                 if 'data.mode' in df.columns:
                     df['data.mode'] = ''
@@ -665,9 +642,6 @@ def query_all_trajectories_chunked(start_date: str, end_date: str, tz: str, key_
                         lambda x: ecwm.MotionTypes(x).name if x in set(enum.value for enum in ecwm.MotionTypes) else 'UNKNOWN'
                     )
             
-            #sort by timestamp to ensure consistent ordering
-            if 'data.ts' in df.columns:
-                df = df.sort_values('data.ts').reset_index(drop=True)
-            
+            # Note: Sorting is already handled in query_entries_chunked
             yield df
 
