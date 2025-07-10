@@ -28,10 +28,14 @@ layout = html.Div(
         html.Div([
             dcc.Markdown('## Tokens', style={'margin-right': 'auto'}),
             dbc.Button(children='Generate more tokens', id='open-modal-btn', n_clicks=0),
-            dbc.Button(children='Export QR codes',
-                       color='primary',
-                       outline=True,
-                       id='token-export', n_clicks=0),
+            dcc.Loading(
+                children=dbc.Button(children='Export QR codes',
+                                   color='primary',
+                                   outline=True,
+                                   id='token-export', n_clicks=0),
+                type="default",
+                style={"display": "inline-block"}
+            ),
             dcc.Download(id='download-tokens'),
         ],
             style={'display': 'flex', 'gap': '5px', 'margin-bottom': '20px'}

@@ -91,11 +91,13 @@ def get_demographic_columns(columns):
         columns.remove(column)
     return columns
 
+# put the first 250k entries into the temporary files, then zip it, free the memory, then zip again
 def get_trajectories_columns(columns):
     columns = list(columns)
     for column in permissions.get("data_trajectories_columns_exclude", []):
         columns.remove(column)
     return columns
+
 
 def get_token_prefix():
     return permissions.get('token_prefix', 'nrelop')
