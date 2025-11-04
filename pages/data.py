@@ -4,12 +4,20 @@ Note that the callback will trigger even if prevent_initial_call=True. This is b
 Since the dcc.Location component is not in the layout when navigating to this page, it triggers the callback.
 The workaround is to check if the input value is None.
 """
-from dash import dcc, html, Input, Output, callback, register_page, State, set_props, MATCH
+from dash import dcc, html, Input, Output, callback, register_page, State, set_props, MATCH, no_update
 import dash_ag_grid as dag
 import arrow
 import logging
 import pandas as pd
 from dash.exceptions import PreventUpdate
+
+
+import io
+import zipfile
+from datetime import datetime, timedelta
+
+import dash_bootstrap_components as dbc
+
 
 from utils import constants
 from utils import permissions as perm_utils
@@ -460,10 +468,16 @@ def populate_datatable(df, store_uuids, table_id):
                     "height": "600px",
                 },
               ),
-              html.Button(
-                  "Download CSV",
-                  id={"type": "download-csv-btn", "id": table_id},
+              dcc.Loading(
+                  children=html.Button(
+                      "Download ZIP",
+                      id={"type": "download-zip-btn", "id": table_id},
+                  ),
+                  type="default",
+                  style={"display": "inline-block"}
               ),
+              dcc.Download(id={"type": "download-csv-btn", "id": table_id}),
+              dcc.Download(id='download-trajectories-zip'),
             ])
         esdsq.store_dashboard_time(
             "admin/data/populate_datatable/create_datatable",
@@ -478,13 +492,171 @@ def populate_datatable(df, store_uuids, table_id):
 
 
 @callback(
-    Output({"type": "data_table", "id": MATCH}, "exportDataAsCsv"),
-    Output({"type": "download-csv-btn", "id": MATCH}, "csvExportParams"),
-    Output({"type": "download-csv-btn", "id": MATCH}, "n_clicks"),
-    Input({"type": "download-csv-btn", "id": MATCH}, "n_clicks"),
+    Output({"type": "download-csv-btn", "id": MATCH}, "data"),
+    Input({"type": "download-zip-btn", "id": MATCH}, "n_clicks"),
+    State({"type": "data_table", "id": MATCH}, "rowData"),
+    State({"type": "data_table", "id": MATCH}, "id"),
+    State("date-picker", "start_date"),
+    State("date-picker", "end_date"),
+    State("date-picker-timezone", "value"),
+    State("store-excluded-uuids", "data"),
+    State("keylist-switch", "value"),
+    prevent_initial_call=True,
 )
-def export_table_as_csv(n_clicks):
+def export_table_as_csv(n_clicks, table_data, table_id_dict, start_date, end_date, timezone, store_excluded_uuids, key_list):
     if not n_clicks:
-        raise PreventUpdate
-    return True, {"fileName": "tokens-table.csv"}, 0
-
+        return no_update
+    
+    # Create ZIP file in memory
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED, compresslevel=1) as zip_file:
+        
+        #special handling for trajectories using chunked download
+        if table_id_dict['id'] == 'trajectories':
+            logging.info("Starting chunked trajectory export...")
+            
+            #use chunked download to get complete data beyond 250k limit
+            from utils.db_utils import query_all_trajectories_chunked
+            from utils.datetime_utils import iso_to_date_only
+            
+            #convert dates for the chunked query
+            (start_date_only, end_date_only) = iso_to_date_only(start_date, end_date)
+            
+            #track daily data and overall statistics
+            daily_data = {}
+            total_records = 0
+            total_chunks = 0
+            all_columns = set()
+            unique_users = set()
+            
+            try:
+                #process data in chunks to avoid memory issues
+                date_query = {
+                    'start_date': start_date_only,
+                    'end_date': end_date_only,
+                    'tz': timezone
+                }
+                for chunk_df in query_all_trajectories_chunked(
+                    date_query, key_list, store_excluded_uuids["data"]
+                ):
+                    total_chunks += 1
+                    chunk_records = len(chunk_df)
+                    total_records += chunk_records
+                    
+                    logging.info(f"Processing chunk {total_chunks} with {chunk_records} records "
+                               f"(Total processed: {total_records})")
+                    
+                    if not chunk_df.empty:
+                        #track columns and users
+                        all_columns.update(chunk_df.columns)
+                        if 'user_id' in chunk_df.columns:
+                            unique_users.update(chunk_df['user_id'].unique())
+                        
+                        #process timestamp column for daily grouping
+                        if 'data.ts' in chunk_df.columns:
+                            chunk_df['date'] = chunk_df['data.ts'].apply(
+                                lambda ts: arrow.get(ts).format('YYYY-MM-DD') if pd.notna(ts) else 'unknown'
+                            )
+                            
+                            #group this chunk's data by date
+                            for date, group_df in chunk_df.groupby('date'):
+                                if date not in daily_data:
+                                    daily_data[date] = []
+                                
+                                #remove the temporary date column for storage
+                                export_df = group_df.drop('date', axis=1)
+                                daily_data[date].append(export_df)
+                        else:
+                            #fallback: add to unknown date if no timestamp
+                            if 'unknown' not in daily_data:
+                                daily_data['unknown'] = []
+                            daily_data['unknown'].append(chunk_df)
+                
+                logging.info(f"Chunked download complete: {total_records} total records across {total_chunks} chunks")
+                
+                #create CSV files for each day
+                summary_data = []
+                for date, daily_chunks in daily_data.items():
+                    #combine all chunks for this date
+                    day_df = pd.concat(daily_chunks, ignore_index=True) if daily_chunks else pd.DataFrame()
+                    
+                    if not day_df.empty:
+                        csv_content = day_df.to_csv(index=False)
+                        filename = f"trajectories_{date}.csv"
+                        zip_file.writestr(filename, csv_content)
+                        
+                        #track daily summary
+                        day_users = day_df['user_id'].nunique() if 'user_id' in day_df.columns else 0
+                        summary_data.append({
+                            'date': date,
+                            'trajectory_count': len(day_df),
+                            'unique_users': day_users
+                        })
+                
+                #add overall totals to summary
+                summary_data.append({
+                    'date': 'TOTAL',
+                    'trajectory_count': total_records,
+                    'unique_users': len(unique_users)
+                })
+                
+                #create daily summary CSV
+                if summary_data:
+                    summary_df = pd.DataFrame(summary_data)
+                    zip_file.writestr("daily_summary.csv", summary_df.to_csv(index=False))
+                
+                #create overall export summary
+                export_summary = {
+                    'total_records': total_records,
+                    'total_chunks_processed': total_chunks,
+                    'total_days': len([d for d in daily_data.keys() if d != 'unknown']),
+                    'date_range': f"{start_date} to {end_date}" if start_date and end_date else "All data",
+                    'export_timestamp': datetime.now().isoformat(),
+                    'key_list': key_list,
+                    'chunked_download': True,
+                    'columns': ', '.join(sorted(all_columns))
+                }
+                export_summary_df = pd.DataFrame([export_summary])
+                zip_file.writestr("export_summary.csv", export_summary_df.to_csv(index=False))
+                
+                logging.info(f"Export complete: {total_records} records across {len(daily_data)} days")
+                
+            except Exception as e:
+                logging.error(f"Error during chunked trajectory export: {str(e)}")
+                #create error file in the ZIP
+                error_info = {
+                    'error': str(e),
+                    'export_timestamp': datetime.now().isoformat(),
+                    'partial_records_processed': total_records,
+                    'chunks_processed': total_chunks
+                }
+                error_df = pd.DataFrame([error_info])
+                zip_file.writestr("export_error.csv", error_df.to_csv(index=False))
+        
+        else:
+            #original behavior for non-trajectories data
+            if not table_data:
+                return no_update
+                
+            df = pd.DataFrame(table_data)
+            csv_content = df.to_csv(index=False)
+            filename = f"data_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            zip_file.writestr(filename, csv_content)
+            
+            #add simple summary
+            summary_data = {
+                'total_records': len(df),
+                'date_range': f"{start_date} to {end_date}" if start_date and end_date else "All data",
+                'export_timestamp': datetime.now().isoformat(),
+                'chunked_download': False,
+                'columns': ', '.join(df.columns.tolist())
+            }
+            summary_df = pd.DataFrame([summary_data])
+            zip_file.writestr("export_summary.csv", summary_df.to_csv(index=False))
+    
+    zip_buffer.seek(0)
+    
+    # Return the ZIP file for download
+    filename = f"data_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    return dcc.send_bytes(zip_buffer.getvalue(), filename)
