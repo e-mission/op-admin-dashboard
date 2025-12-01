@@ -70,11 +70,15 @@ def get_cognito_login_page(text='Welcome to the dashboard', color='black'):
 
 
 def authenticate_user(params):
+    """
+    Determine authentication status by checking cookies or query parameters.
+    Returns the user's email if authenticated, otherwise returns None.
+    """
     all_cookies = dict(flask.request.cookies)
     if all_cookies.get('token') is not None:
         user_data = decode_jwt.lambda_handler(all_cookies['token'])
         if user_data:
-            return True
+            return user_data['email']
 
     # If code is in query params, validate the user and set the token in cookies
     query_params = get_query_params(params)
@@ -88,6 +92,6 @@ def authenticate_user(params):
                 httponly=True,
                 secure=True,
             )
-            return True
+            return user_data['email']
 
-    return False
+    return None

@@ -239,39 +239,30 @@ page_content = dcc.Loading(
 )
 
 
-@app.callback(
-    Output('global-loading', 'display'),
-    Input('interval-load-more', 'disabled'),
-)
-def hide_spinner_while_loading_batch(interval_disabled):
-    if interval_disabled:
-        return 'auto'
-    return 'hide'
-
-
-def make_home_page(): return [
-    sidebar,
-    html.Div([make_controls(), page_content])
-]
+def make_app_content(user_email=''):
+    return [
+        dcc.Store(id='user-email', data=user_email),
+        dcc.Store(id='store-trips', data={}),
+        dcc.Store(id='store-uuids', data={}),
+        # list of UUIDs from excluded subgroups
+        dcc.Store(id='store-excluded-uuids', data={}),
+        dcc.Store(id='store-demographics', data={}),
+        dcc.Store(id='store-trajectories', data={}),
+        dcc.Store(id='store-label-options', data={}),
+        html.Div([
+            sidebar,
+            html.Div([
+                make_controls(), page_content,
+            ]),
+        ]),
+    ]
 
 
 def make_layout():
-    return dmc.MantineProvider(
-        theme={'colorScheme': 'light'},  # Optional: Customize theme
-        children=[
-            html.Div([
-                dcc.Location(id='url', refresh=False),
-                dcc.Store(id='store-trips', data={}),
-                dcc.Store(id='store-uuids', data={}),
-                dcc.Store(id='store-excluded-uuids', data={}),  # list of UUIDs from excluded subgroups
-                dcc.Store(id='store-demographics', data={}),
-                dcc.Store(id='store-trajectories', data={}),
-                dcc.Store(id='store-label-options', data={}),
-                html.Div(id='page-content', children=make_home_page()),
-            ])
-        ]
-    )
-
+    return dmc.MantineProvider([
+        dcc.Location(id='url', refresh=False),
+        html.Div(id='app-content')
+    ])
 app.layout = make_layout
 
 # make the 'filters' menu collapsible
@@ -378,22 +369,23 @@ def load_label_options(_):
 
 # Define the callback to display the page content based on the URL path
 @app.callback(
-    Output('page-content', 'children'),
+    Output('app-content', 'children'),
     Input('url', 'search'),
 )
 def display_page(search):
     if auth_type == 'cognito':
         try:
-            is_authenticated = authenticate_user(search)
+            user_email = authenticate_user(search)
         except Exception as e:
-            print(e)
+            logging.error("Authentication failed: %s", e)
             return get_cognito_login_page('Unsuccessful authentication, try again.', 'red')
-
-        if is_authenticated:
-            return make_home_page()
+        if user_email:
+            logging.debug(f"Authenticated as {user_email}, returning app content")
+            return make_app_content(user_email)
+        logging.debug("Not authenticated, returning login page")
         return get_cognito_login_page()
-
-    return make_home_page()
+    logging.debug("No authentication required, returning app content")
+    return make_app_content()
 
 extra_csp_url = [
     "https://raw.githubusercontent.com",
