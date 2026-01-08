@@ -28,14 +28,14 @@ intro = """## Data"""
 layout = html.Div(
     [
         dcc.Markdown(intro),
-        dcc.Tabs(id="tabs-datatable", value='tab-uuids-datatable', children=[
-            dcc.Tab(label='UUIDs', value='tab-uuids-datatable'),
+        dcc.Tabs(id="tabs-datatable", value='tab-users-datatable', children=[
+            dcc.Tab(label='Users', value='tab-users-datatable'),
             dcc.Tab(label='Trips', value='tab-trips-datatable'),
             dcc.Tab(label='Surveys', value='tab-surveys-datatable'),
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
         html.Div(id='tabs-content', style={'margin': '12px '}),
-        dcc.Store(id='selected-tab', data='tab-uuids-datatable'),  # Store to hold selected tab
+        dcc.Store(id='selected-tab', data='tab-users-datatable'),  # Store to hold selected tab
         dcc.Store(id='loaded-uuids-stats', data=[]),
         dcc.Store(id='all-uuids-stats-loaded', data=False),
         # RadioItems for key list switch, wrapped in a div that can hide/show
@@ -158,7 +158,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
         content = None
 
         # Handle the UUIDs tab without fullscreen loading spinner
-        if tab == 'tab-uuids-datatable':
+        if tab == 'tab-users-datatable':
             with ect.Timer() as handle_uuids_timer:
                 # Prepare the data to be displayed
                 columns = perm_utils.get_uuids_columns()  # Get the relevant columns
