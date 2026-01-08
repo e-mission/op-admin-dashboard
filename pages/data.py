@@ -6,6 +6,7 @@ The workaround is to check if the input value is None.
 """
 from dash import dcc, html, Input, Output, callback, register_page, State, set_props, MATCH
 import dash_ag_grid as dag
+import dash_mantine_components as dmc
 import arrow
 import logging
 import pandas as pd
@@ -466,9 +467,11 @@ def populate_datatable(df, store_uuids, table_id):
                     "height": "600px",
                 },
               ),
-              html.Button(
-                  "Download CSV",
+              dmc.Button(
+                  "Download as CSV",
                   id={"type": "download-csv-btn", "id": table_id},
+                  variant='outline',
+                  style={'margin-block': '8px'},
               ),
             ])
         esdsq.store_dashboard_time(
@@ -492,5 +495,18 @@ def populate_datatable(df, store_uuids, table_id):
 def export_table_as_csv(n_clicks):
     if not n_clicks:
         raise PreventUpdate
-    return True, {"fileName": "tokens-table.csv"}, 0
+    fname = f"openpath-data-{arrow.now().isoformat()}.csv"
+    return True, {"fileName": fname}, 0
 
+
+@callback(
+    Output({"type": "download-csv-btn", "id": MATCH}, "children"),
+    Input({"type": "data_table", "id": MATCH}, "rowData"),
+)
+def update_n_rows_download(row_data):
+    if row_data is None:
+        raise PreventUpdate
+    return html.Span([
+        html.I(className="fa fa-download mx-2"),
+        f"Download {len(row_data)} Rows as CSV"
+    ])
