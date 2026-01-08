@@ -18,6 +18,7 @@ from utils.db_utils import df_to_filtered_records, query_trajectories
 from utils.datetime_utils import iso_to_date_only
 import emission.core.timer as ect
 import emission.storage.decorations.stats_queries as esdsq
+import emission.storage.json_wrappers as esj
 from utils.ux_utils import skeleton
 from utils.datetime_utils import ts_to_iso
 register_page(__name__, path="/data")
@@ -197,7 +198,6 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
                 data = store_trips.get("data", [])
                 columns = perm_utils.get_allowed_trip_columns()
-                columns.extend(store_trips.get("userinputcols", []))
                 has_perm = perm_utils.has_permission('data_trips')
 
                 df = pd.DataFrame(data)
@@ -217,10 +217,44 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                     df = df.drop(columns=[col for col in df.columns if col not in columns])
                     df = clean_location_data(df)
 
+                    trip_labels_enketo = perm_utils.config.get("survey_info", {}).get("trip-labels") == 'ENKETO'
+                    if trip_labels_enketo:
+                        def extract_response(x):
+                            docs = esj.wrapped_loads(x) \
+                                    .get('trip_user_input', {}) \
+                                    .get('data', {}) \
+                                    .get('jsonDocResponse', {})
+                            r = next(iter(docs.values()), {})
+                            # return response wtihout unneeded fields
+                            return {
+                                k: v for k, v in r.items()
+                                if k not in ['meta', 'attrid', 'start', 'end']
+                                and 'xmlns' not in k
+                            }
+                        response = df['data.user_input'].apply(extract_response)
+                        user_input_cols = pd.json_normalize(response)
+                    else:
+                        user_input_cols = pd.json_normalize(
+                            df['data.user_input'].apply(lambda x: esj.wrapped_loads(x) if x is not None else {})
+                        )
+                    user_input_cols.columns = [f"data.user_input.{col}" for col in user_input_cols.columns]
+                    df = pd.concat([df, user_input_cols], axis=1)
+
                     trips_table = populate_datatable(df, store_uuids, 'trips')
 
                     content = html.Div([
-                        html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
+                        dmc.Checkbox(
+                            label="Include human-friendly units for distance and duration",
+                            id="humanize-units",
+                            checked=True,
+                            style={'margin-bottom': '12px'}
+                        ),
+                        dmc.Checkbox(
+                            label="Expand user_input to separate columns",
+                            id="expand-user-input",
+                            checked=False,
+                            style={'margin-bottom': '12px'}
+                        ),
                         trips_table
                     ])
             # Store timing after handling Trips tab
@@ -380,42 +414,23 @@ def update_sub_tab(tab, store_demographics, store_uuids):
 
 @callback(
     Output({'type': 'data_table', 'id': 'trips'}, 'columnDefs'),
-    Output('button-clicked', 'children'),  # Updates button label
-    Input('button-clicked', 'n_clicks'),  # Number of clicks on the button
+    Input('humanize-units', 'checked'),
+    Input('expand-user-input', 'checked'),
     State({'type': 'data_table', 'id': 'trips'}, 'columnDefs'),
 )
-# Controls visibility of columns in trips table and updates the label of button based on the number of clicks.
-def update_raw_vs_humanized_units(n_clicks, columnDefs):
-    with ect.Timer() as total_timer:
-        humanized_cols = ['data_duration', 'data_distance_miles', 'data_distance_km']
-        raw_cols = ['data_duration_seconds', 'data_distance_meters', 'data_distance']
-
-        # Stage 1: Determine hidden columns and button label based on number of clicks
-        with ect.Timer() as stage1_timer:
-            if n_clicks % 2 == 0:
-                columnDefs = [{**col, 'hide': True} if col['field'] in raw_cols
-                              else {**col, 'hide': False}
-                              for col in columnDefs]
-                button_label = 'Display columns with raw units'
-            else:
-                columnDefs = [{**col, 'hide': True} if col['field'] in humanized_cols
-                              else {**col, 'hide': False}
-                              for col in columnDefs]
-                button_label = 'Display columns with humanized units'
-        esdsq.store_dashboard_time(
-            "admin/data/update_dropdowns_trips/determine_hidden_columns_and_label",
-            stage1_timer
-        )
-
-    # Store the total time for the entire function
-    esdsq.store_dashboard_time(
-        "admin/data/update_dropdowns_trips/total_time",
-        total_timer
-    )
-
-    # Return the list of hidden columns and the updated button label
-    return columnDefs, button_label
-
+def hide_cols(humanize, expand_user_input, columnDefs):
+    humanized_cols = ['data:duration_humanized', 'data:distance_miles', 'data:distance_km']
+    newColumnDefs = []
+    for col in columnDefs:
+        if col['field'] in humanized_cols:
+            col['hide'] = not humanize
+        elif col['field'] == 'data:user_input':
+            col['hide'] = expand_user_input
+        elif col['field'].startswith('data:user_input:'):
+            col['hide'] = not expand_user_input
+            col['headerName'] = col['headerName'].replace('user_input:', '')
+        newColumnDefs.append(col)
+    return newColumnDefs
 
 def populate_datatable(df, store_uuids, table_id):
     with ect.Timer() as total_timer:
@@ -440,14 +455,14 @@ def populate_datatable(df, store_uuids, table_id):
                 )
         # Stage 2: Create the DataTable from the DataFrame
         with ect.Timer() as stage2_timer:
-            # Ag Grid does not allow . in column names; replace with _
+            # Ag Grid does not allow . in column names; replace with :
             # before creating the DataTable
-            df.columns = [col.replace('.', '_') for col in df.columns]
+            df.columns = [col.replace('.', ':') for col in df.columns]
             result = html.Div([
               dag.AgGrid(
                 id={'type': 'data_table', 'id': table_id},
                 rowData=df.to_dict('records'),
-                columnDefs=[{"field": i, "headerName": i} for i in df.columns],
+                columnDefs=[{"field": i, "headerName": i.replace('data:', '')} for i in df.columns],
                 defaultColDef={ "sortable": True, "filter": True },
                 columnSize="autoSize",
                 dashGridOptions={

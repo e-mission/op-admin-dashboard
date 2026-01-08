@@ -6,6 +6,7 @@ import pandas as pd
 import pymongo
 
 import emission.core.get_database as edb
+import emission.storage.json_wrappers as esj
 import emission.storage.timeseries.abstract_timeseries as esta
 import emission.storage.timeseries.aggregate_timeseries as estag
 import emission.storage.timeseries.timequery as estt
@@ -117,8 +118,6 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
             stage2_timer
         )
 
-        user_input_cols = []
-
         logging.debug("Before filtering, df columns are %s" % df.columns)
         if not df.empty:
             # Since we use `get_data_df` instead of `pd.json_normalize`,
@@ -177,25 +176,13 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
                 stage4_timer
             )
 
-            # Stage 5: Expand user inputs and filter columns
+            # Stage 5: Filter columns and stringify user_input
             with ect.Timer() as stage5_timer:
-                # Expand the user inputs
-                user_input_df = pd.json_normalize(df.user_input)
-                df = pd.concat([df, user_input_df], axis='columns')
-                logging.debug(f"Before filtering {user_input_df.columns=}")
-                user_input_cols = [c for c in user_input_df.columns
-                    if "metadata" not in c and
-                       "xmlns" not in c and
-                       "local_dt" not in c and
-                       'xmlResponse' not in c and
-                       "_id" not in c]
-                logging.debug(f"After filtering {user_input_cols=}")
-
-                combined_col_list = list(perm_utils.get_all_trip_columns()) + user_input_cols
-                logging.debug(f"Combined list {combined_col_list=}")
-                columns = [col for col in combined_col_list if col in df.columns]
-                df = df[columns]
-                logging.debug(f"After filtering against the combined list {df.columns=}")
+                allowed_cols = list(perm_utils.get_all_trip_columns())
+                df = df[[c for c in allowed_cols if c in df.columns]]
+                df['data.user_input'] = df['data.user_input'].apply(
+                    lambda x: esj.wrapped_dumps(x) if x is not None else '{}'
+                )
             esdsq.store_dashboard_time(
                 "admin/db_utils/query_confirmed_trips/expand_and_filter_user_inputs",
                 stage5_timer
@@ -218,25 +205,25 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
 
             # Stage 7: Humanize distance and duration values
             with ect.Timer() as stage7_timer:
-                # TODO: We should really display both the humanized value and the raw value
-                # humanized value for people to see the entries in real time
-                # raw value to support analyses on the downloaded data
-                # I still don't fully grok which columns are displayed
-                # https://github.com/e-mission/op-admin-dashboard/issues/29#issuecomment-1530105040
-                # https://github.com/e-mission/op-admin-dashboard/issues/29#issuecomment-1530439811
-                # so just replacing the distance and duration with the humanized values for now
-                df['data.distance_meters'] = df['data.distance']
-                use_imperial = perm_utils.config.get("display_config",
-                    {"use_imperial": False}).get("use_imperial", False)
-                # convert to km to humanize
-                df['data.distance_km'] = df['data.distance'] / 1000
-                # convert km further to miles because this is the US, Liberia or Myanmar
-                # https://en.wikipedia.org/wiki/Mile
-                df['data.duration_seconds'] = df['data.duration']
+                df.insert(
+                    df.columns.get_loc("data.duration") + 1,
+                    "data.duration_humanized",
+                    df['data.duration'].apply(
+                        lambda d: arrow.utcnow().shift(seconds=d).humanize(only_distance=True)
+                    )
+                )
+                use_imperial = perm_utils.config.get("display_config", {}).get("use_imperial")
                 if use_imperial:
-                    df['data.distance_miles'] = df['data.distance_km'] * 0.6213712
-
-                df['data.duration'] = df['data.duration'].apply(lambda d: arrow.utcnow().shift(seconds=d).humanize(only_distance=True))
+                    df.insert(
+                        df.columns.get_loc("data.distance") + 1,
+                        "data.distance_miles",
+                        df['data.distance'] / 1609.344 # https://en.wikipedia.org/wiki/Mile
+                    )
+                df.insert(
+                    df.columns.get_loc("data.distance") + 1,
+                    "data.distance_km",
+                    df['data.distance'] / 1000
+                )
             esdsq.store_dashboard_time(
                 "admin/db_utils/query_confirmed_trips/humanize_distance_and_duration",
                 stage7_timer
@@ -247,7 +234,7 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
         total_timer
     )
 
-    return (df, user_input_cols)
+    return df
 
 
 def query_demographics():

@@ -351,13 +351,12 @@ def update_store_demographics(start_date, end_date, timezone, excluded_uuids):
 )
 def update_store_trips(start_date, end_date, timezone, excluded_uuids):
     (start_date, end_date) = iso_to_date_only(start_date, end_date)
-    df, user_input_cols = query_confirmed_trips(start_date, end_date, timezone)
+    df = query_confirmed_trips(start_date, end_date, timezone)
     records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
     # logging.debug("returning records %s" % records[0:2])
     store = {
         "data": records,
         "length": len(records),
-        "userinputcols": user_input_cols
     }
     return store
 

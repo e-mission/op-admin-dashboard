@@ -15,7 +15,7 @@ VALID_TRIP_COLS = [
     "data.end_local_dt",
     "data.end_fmt_time",
     "data.duration",
-    "data.duration_seconds",
+    "data.duration_humanized",
     "data.distance",
     "data.distance_km",
     "data.distance_miles",
@@ -25,6 +25,7 @@ VALID_TRIP_COLS = [
     "data.primary_sensed_mode",
     "data.primary_predicted_mode",
     "data.primary_ble_sensed_mode",
+    "data.user_input",
 ]
 
 BINARY_TRIP_COLS = [
