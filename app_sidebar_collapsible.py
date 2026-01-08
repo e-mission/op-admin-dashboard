@@ -32,7 +32,7 @@ import emission.analysis.configs.dynamic_config as eacd
 import emcommon.util as emcu
 
 from utils.datetime_utils import iso_to_date_only
-from utils.db_utils import df_to_filtered_records, query_users, query_confirmed_trips, query_demographics
+from utils.db_utils import df_to_filtered_records, query_users, query_confirmed_trips, query_surveys
 from utils.permissions import has_permission, config
 import flask_talisman as flt
 
@@ -264,7 +264,7 @@ def make_layout():
                 dcc.Store(id='store-trips', data={}),
                 dcc.Store(id='store-uuids', data={}),
                 dcc.Store(id='store-excluded-uuids', data={}),  # list of UUIDs from excluded subgroups
-                dcc.Store(id='store-demographics', data={}),
+                dcc.Store(id='store-surveys', data={}),
                 dcc.Store(id='store-trajectories', data={}),
                 dcc.Store(id='store-label-options', data={}),
                 html.Div(id='page-content', children=make_home_page()),
@@ -323,14 +323,15 @@ def update_store_uuids(start_date, end_date, timezone, excluded_subgroups):
 
 
 @app.callback(
-    Output("store-demographics", "data"),
+    Output("store-surveys", "data"),
     Input('date-picker', 'start_date'),
     Input('date-picker', 'end_date'),
     Input('date-picker-timezone', 'value'),
     Input('store-excluded-uuids', 'data'),
 )
-def update_store_demographics(start_date, end_date, timezone, excluded_uuids):
-    dataframes = query_demographics()
+def update_store_surveys(start_date, end_date, timezone, excluded_uuids):
+    (start_date, end_date) = iso_to_date_only(start_date, end_date)
+    dataframes = query_surveys(start_date, end_date, timezone)
     records = {}
     for key, df in dataframes.items():
         records[key] = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])

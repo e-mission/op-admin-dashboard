@@ -237,42 +237,49 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
     return df
 
 
-def query_demographics():
+def query_surveys(start_date: str, end_date: str, tz: str):
     with ect.Timer() as total_timer:
 
-        # Stage 1: Query demographics data
+        (start_ts, end_ts) = iso_range_to_ts_range(start_date, end_date, tz)
+
+        # Stage 1: Query survey responses
         with ect.Timer() as stage1_timer:
             # Returns dictionary of df where key represent different survey id and values are df for each survey
-            logging.debug("Querying the demographics for (no date range)")
+            logging.debug(f"Querying trip/place surveys from {start_date} -> {end_date}, and all onboarding surveys")
             ts = esta.TimeSeries.get_aggregate_time_series()
-            entries = ts.find_entries(["manual/demographic_survey"])
-            data = list(entries)
+            onboarding_survey_entries = ts.find_entries(["manual/demographic_survey"])
+            tlentry_survey_entries = ts.find_entries(['manual/trip_user_input',
+                                                    'manual/place_user_input',
+                                                    'manual/trip_addition_input',
+                                                    'manual/place_addition_input'],
+                                                    time_query=estt.TimeQuery("data.start_ts", start_ts, end_ts))
+            data = list(onboarding_survey_entries) + list(tlentry_survey_entries)
         esdsq.store_dashboard_time(
-            "admin/db_utils/query_demographics/query_data",
+            "admin/db_utils/query_surveys/query_data",
             stage1_timer
         )
 
         # Stage 2: Organize survey keys
         with ect.Timer() as stage2_timer:
-            available_key = {}
+            surveys_responses = {}
             for entry in data:
-                survey_key = list(entry['data']['jsonDocResponse'].keys())[0]
-                if survey_key not in available_key:
-                    available_key[survey_key] = []
-                available_key[survey_key].append(entry)
+                survey_name = entry['data'].get('name')
+                if survey_name not in surveys_responses:
+                    surveys_responses[survey_name] = []
+                surveys_responses[survey_name].append(entry)
         esdsq.store_dashboard_time(
-            "admin/db_utils/query_demographics/organize_survey_keys",
+            "admin/db_utils/query_surveys/organize_survey_keys",
             stage2_timer
         )
 
         # Stage 3: Create dataframes for each survey key
         with ect.Timer() as stage3_timer:
             dataframes = {}
-            for key, json_object in available_key.items():
+            for key, json_object in surveys_responses.items():
                 df = pd.json_normalize(json_object)
                 dataframes[key] = df
         esdsq.store_dashboard_time(
-            "admin/db_utils/query_demographics/create_dataframes",
+            "admin/db_utils/query_surveys/create_dataframes",
             stage3_timer
         )
 
@@ -280,8 +287,8 @@ def query_demographics():
         with ect.Timer() as stage4_timer:
             for key, df in dataframes.items():
                 if not df.empty:
-                    # Convert binary demographic columns
-                    for col in constants.BINARY_DEMOGRAPHICS_COLS:
+                    # Convert binary survey columns
+                    for col in constants.BINARY_SURVEY_COLS:
                         if col in df.columns:
                             df[col] = df[col].apply(str) 
                     
@@ -296,17 +303,17 @@ def query_demographics():
                     # Simplify column names for display
                     df.columns = [col.rsplit('.', 1)[-1] if col.startswith('data.jsonDocResponse.') else col for col in df.columns]  
 
-                    # Drop excluded demographic columns
-                    for col in constants.EXCLUDED_DEMOGRAPHICS_COLS:
+                    # Drop excluded survey columns
+                    for col in constants.EXCLUDED_SURVEY_COLS:
                         if col in df.columns:
                             df.drop(columns=[col], inplace=True)
         esdsq.store_dashboard_time(
-            "admin/db_utils/query_demographics/process_dataframes",
+            "admin/db_utils/query_surveys/process_dataframes",
             stage4_timer
         )
 
     esdsq.store_dashboard_time(
-        "admin/db_utils/query_demographics/total_time",
+        "admin/db_utils/query_surveys/total_time",
         total_timer
     )
 

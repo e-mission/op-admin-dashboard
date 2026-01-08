@@ -31,7 +31,7 @@ layout = html.Div(
         dcc.Tabs(id="tabs-datatable", value='tab-uuids-datatable', children=[
             dcc.Tab(label='UUIDs', value='tab-uuids-datatable'),
             dcc.Tab(label='Trips', value='tab-trips-datatable'),
-            dcc.Tab(label='Demographics', value='tab-demographics-datatable'),
+            dcc.Tab(label='Surveys', value='tab-surveys-datatable'),
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
         html.Div(id='tabs-content', style={'margin': '12px '}),
@@ -141,14 +141,14 @@ def show_keylist_switch(tab):
     Input('store-uuids', 'data'),
     Input('store-excluded-uuids', 'data'),
     Input('store-trips', 'data'),
-    Input('store-demographics', 'data'),
+    Input('store-surveys', 'data'),
     Input('store-trajectories', 'data'),
     Input('date-picker', 'start_date'),
     Input('date-picker', 'end_date'),
     Input('date-picker-timezone', 'value'),
     Input('keylist-switch', 'value'),  # Add keylist-switch to trigger data refresh on change
 )
-def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date, timezone, key_list):
+def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_surveys, store_trajectories, start_date, end_date, timezone, key_list):
     with ect.Timer() as total_timer:
         # Stage 1: Update selected tab
         selected_tab = tab
@@ -263,38 +263,29 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                 handle_trips_timer
             )
 
-        # Handle Demographics tab
-        elif tab == 'tab-demographics-datatable':
-            with ect.Timer() as handle_demographics_timer:
-                data = store_demographics.get("data", {})
+        # Handle Surveys tab
+        elif tab == 'tab-surveys-datatable':
+            with ect.Timer() as handle_surveys_timer:
+                data = store_surveys.get("data", {})
                 has_perm = perm_utils.has_permission('data_demographics')
 
-                if len(data) == 1:
-                    # Here data is a dictionary
-                    data = list(data.values())[0]
-                    columns = list(data[0].keys()) if data else []
-                    df = pd.DataFrame(data)
-                    if df.empty:
-                        content = skeleton(500)
-                    else:
-                        content = populate_datatable(df, store_uuids, 'demographics')
-                elif len(data) > 1:
+                if len(data) >= 1:
                     if not has_perm:
                         content = skeleton(100)
                     else:
                         content = html.Div([
-                            dcc.Tabs(id='subtabs-demographics', value=list(data.keys())[0], children=[
+                            dcc.Tabs(id='subtabs-surveys', value=list(data.keys())[0], children=[
                                 dcc.Tab(label=key, value=key) for key in data
                             ]),
-                            html.Div(id='subtabs-demographics-content')
+                            html.Div(id='subtabs-surveys-content')
                         ])
                 else:
                     content = None
 
-            # Store timing after handling Demographics tab
+            # Store timing after handling surveys tab
             esdsq.store_dashboard_time(
-                "admin/data/render_content/handle_demographics_tab",
-                handle_demographics_timer
+                "admin/data/render_content/handle_surveys_tab",
+                handle_surveys_timer
             )
 
         # Handle Trajectories tab
@@ -348,21 +339,21 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
     return content
 
-# Handle subtabs for demographic table when there are multiple surveys
+# Handle subtabs for surveys tab when there are multiple surveys
 @callback(
-    Output('subtabs-demographics-content', 'children'),
-    Input('subtabs-demographics', 'value'),
-    Input('store-demographics', 'data'),
+    Output('subtabs-surveys-content', 'children'),
+    Input('subtabs-surveys', 'value'),
+    Input('store-surveys', 'data'),
     Input('store-uuids', 'data')
 )
-def update_sub_tab(tab, store_demographics, store_uuids):
+def update_sub_tab(tab, store_surveys, store_uuids):
     with ect.Timer() as total_timer:
 
         # Stage 1: Retrieve and process data for the selected subtab
         with ect.Timer() as stage1_timer:
-            data = store_demographics["data"]
-            if tab in data:
-                data = data[tab]
+            surveys_data = store_surveys["data"]
+            if tab in surveys_data:
+                data = surveys_data[tab]
                 if data:
                     columns = list(data[0].keys())
         esdsq.store_dashboard_time(
@@ -398,7 +389,7 @@ def update_sub_tab(tab, store_demographics, store_uuids):
 
         # Stage 4: Populate the datatable with the cleaned DataFrame
         with ect.Timer() as stage4_timer:
-            result = populate_datatable(df, store_uuids, 'demographics')
+            result = populate_datatable(df, store_uuids, 'surveys')
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/populate_datatable",
             stage4_timer

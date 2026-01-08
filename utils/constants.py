@@ -58,12 +58,12 @@ VALID_UUIDS_COLS = [
     'phone_lang',
 ]
 
-BINARY_DEMOGRAPHICS_COLS = [
+BINARY_SURVEY_COLS = [
     'user_id',
     '_id',
 ]
 
-EXCLUDED_DEMOGRAPHICS_COLS = [
+EXCLUDED_SURVEY_COLS = [
     'data.xmlResponse', 
     'data.name',
     'data.version',
