@@ -31,6 +31,10 @@ RUN mkdir qrcodes
 WORKDIR /usr/src/app/data
 COPY data ./
 
+# copy over conf files
+WORKDIR /usr/src/app/conf
+COPY conf ./
+
 # open listening port, this may be overridden in docker-compose file
 EXPOSE ${SERVER_PORT}
 
