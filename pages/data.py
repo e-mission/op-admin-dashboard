@@ -11,7 +11,9 @@ import arrow
 import logging
 import pandas as pd
 from dash.exceptions import PreventUpdate
-
+import plotly.express as px # for donut chart
+import urllib.request # for fetching data from urls
+import xml.dom.minidom as minidom # for reading xml files
 from utils import constants
 from utils import permissions as perm_utils
 from utils import db_utils
@@ -340,7 +342,9 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
 
     return content
 
-# Handle subtabs for surveys tab when there are multiple surveys
+# Main callback for the Surveys tab this function triggers whenever a user 
+# clicks on a specific survey sub-tab. It processes the database data 
+# and converts it into a visual dashboard and a detailed data table.
 @callback(
     Output('subtabs-surveys-content', 'children'),
     Input('subtabs-surveys', 'value'),
@@ -348,61 +352,129 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
     Input('store-uuids', 'data')
 )
 def update_sub_tab(tab, store_surveys, store_uuids):
+    # Helper: Recursively extracts all nested text from an XML node.
+    def get_all_text(node):
+        parts = []
+        for child in node.childNodes:
+            if child.nodeType == node.TEXT_NODE:
+                parts.append(child.data)
+            elif child.nodeType == node.ELEMENT_NODE:
+                parts.append(get_all_text(child))
+        return "".join(parts).strip()
+
+    # XML Parsing that fetches the study's XML configuration from GitHub and 
+    # maps technical database IDs to human-readable English questions
+    def build_survey_dictionaries(survey_name):
+        try:
+            # Access the dynamic study configuration
+            config = perm_utils.config 
+            form_path = config.get('survey_info', {}).get('surveys', {}).get(survey_name, {}).get('formPath')
+            print(f"--- DEBUG: ATTEMPTING TO PARSE XML FROM: {form_path} ---", flush=True)
+            
+            if not form_path:
+                return {}, {}
+
+            # Fetch and parse the XML document
+            result = urllib.request.urlopen(form_path)
+            doc = minidom.parse(result) 
+            
+            # itext_map creates a lookup table of translation IDs to English text
+            itext_map = {}
+            for text_node in doc.getElementsByTagName("text"):
+                text_id = text_node.getAttribute("id")
+                v_nodes = text_node.getElementsByTagName("value")
+                if v_nodes and v_nodes[0].firstChild:
+                    itext_map[text_id] = v_nodes[0].firstChild.data
+
+            opt_dict, quest_dict = {}, {}
+            # Map questions by resolving their jr:itext identifiers
+            for tag in ['input', 'select', 'select1']:
+                for node in doc.getElementsByTagName(tag):
+                    ref = node.getAttribute("ref")
+                    if ref:
+                        parts = ref.split('/')
+                        short_id = parts[-1]
+                        full_db_id = ".".join(parts[2:])
+                        label_nodes = node.getElementsByTagName("label")
+                        if label_nodes:
+                            l_ref = label_nodes[0].getAttribute("ref")
+                            # Clean the ID wrapper and fetch the English question text
+                            clean_id = l_ref.replace("jr:itext('", "").replace("')", "")
+                            question_text = itext_map.get(clean_id, short_id)
+                            # Map both formats to ensure database matches
+                            quest_dict[short_id] = question_text
+                            quest_dict[full_db_id] = question_text
+            return quest_dict, opt_dict
+        except Exception as e:
+            print(f"--- DEBUG ERROR: {e} ---", flush=True)
+            return {}, {}
+
     with ect.Timer() as total_timer:
+        surveys_data = store_surveys["data"]
+        if tab not in surveys_data or not surveys_data[tab]: return None
+        data = surveys_data[tab]
+        df = pd.DataFrame(data)
+        
+        # Build question dictionaries using the XML parsing engine
+        quest_map, opt_map = build_survey_dictionaries(tab)
+        
+        # Filter the database columns. This strictly removes any 
+        # lingering data (I was having an issue with old data/questions being displayed)
+        allowed_cols = [c for c in df.columns if c in quest_map or c in ['_id', 'user_id', 'user_token', 'ts']]
+        df = df[allowed_cols]
+        
+        # Generate the main spreadsheet view
+        table_result = populate_datatable(df, store_uuids, 'surveys')
 
-        # Stage 1: Retrieve and process data for the selected subtab
-        with ect.Timer() as stage1_timer:
-            surveys_data = store_surveys["data"]
-            if tab in surveys_data:
-                data = surveys_data[tab]
-                if data:
-                    columns = list(data[0].keys())
-        esdsq.store_dashboard_time(
-            "admin/data/update_sub_tab/retrieve_and_process_data",
-            stage1_timer
-        )
+    # Visual Component Generation iterates through survey questions to build donut charts.
+    viz_charts = []
+    survey_cols = [c for c in df.columns if c not in ['_id', 'user_id', 'user_token', 'ts']]
+    
+    for col in survey_cols:
+        # Resolve the human-readable header
+        display_question = quest_map.get(col, col.replace('_', ' '))
+        if df[col].nunique() < 15:
+            # Aggregate response counts for the chart
+            counts = df[col].value_counts().reset_index()
+            counts.columns = ['response', 'count']
+            counts['response'] = counts['response'].apply(lambda x: opt_map.get(str(x), x))
+            
+            # Create interactive Plotly donut chart
+            fig = px.pie(counts, values='count', names='response', hole=0.6)
+            fig.update_traces(textinfo='percent', textfont_size=11)
+            fig.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=250)
+            
+            # Build chart UI container with individual legend toggle
+            viz_charts.append(html.Div([
+                dmc.ActionIcon(html.I(className="fa fa-chevron-right"), id={'type': 'individual-toggle', 'index': col}, variant="transparent"),
+                html.Div(f"Results: {display_question}", 
+                         style={'text-align': 'center', 'height': '100px', 'overflow-y': 'auto', 'font-size': '13px', 
+                                'padding': '5px', 'margin-bottom': '10px', 'background-color': '#fcfcfc', 'border-bottom': '1px solid #eee'}),
+                dcc.Graph(id={'type': 'survey-donut', 'index': col}, figure=fig, config={'displayModeBar': False})
+            ], style={'width': '31%', 'display': 'inline-block', 'padding': '15px', 'vertical-align': 'top', 
+                      'border': '1px solid #eee', 'border-radius': '8px', 'margin': '1%', 'background-color': '#fff'}))
 
-        # Stage 2: Convert data to DataFrame
-        with ect.Timer() as stage2_timer:
-            df = pd.DataFrame(data)
-            if df.empty:
-                esdsq.store_dashboard_time(
-                    "admin/data/update_sub_tab/convert_to_dataframe",
-                    stage2_timer
-                )
-                esdsq.store_dashboard_time(
-                    "admin/data/update_sub_tab/total_time",
-                    total_timer
-                )
-                return None
-        esdsq.store_dashboard_time(
-            "admin/data/update_sub_tab/convert_to_dataframe",
-            stage2_timer
-        )
+    # Construct final layout with charts inside a collapsible accordion
+    return html.Div([
+        dmc.Accordion(value="summary-panel", children=[
+            dmc.AccordionItem([
+                dmc.AccordionControl(f"Survey Summary Dashboard: {tab}"),
+                dmc.AccordionPanel([
+                    html.Div([
+                        dmc.Button("Show All Legends", id="show-legends-btn", variant="outline", size="xs", style={'margin-right': '10px'}),
+                        dmc.Button("Hide All Legends", id="hide-legends-btn", variant="outline", size="xs")
+                    ], style={'margin-bottom': '20px'}),
+                    html.Div(viz_charts, id='survey-charts-container', style={'display': 'flex', 'flex-wrap': 'wrap', 'justify-content': 'center'})
+                ])
+            ], value="summary-panel")
+        ]),
+        html.Hr(style={'margin-top': '40px'}),
+        html.H4("Detailed Response Table", style={'margin-left': '15px'}),
+        table_result 
+    ])
 
-        # Stage 3: Filter columns based on the allowed set
-        with ect.Timer() as stage3_timer:
-            df = df.drop(columns=[col for col in df.columns if col not in columns])
-        esdsq.store_dashboard_time(
-            "admin/data/update_sub_tab/filter_columns",
-            stage3_timer
-        )
 
-        # Stage 4: Populate the datatable with the cleaned DataFrame
-        with ect.Timer() as stage4_timer:
-            result = populate_datatable(df, store_uuids, 'surveys')
-        esdsq.store_dashboard_time(
-            "admin/data/update_sub_tab/populate_datatable",
-            stage4_timer
-        )
 
-    # Store the total time for the entire function
-    esdsq.store_dashboard_time(
-        "admin/data/update_sub_tab/total_time",
-        total_timer
-    )
-
-    return result
 
 @callback(
     Output({'type': 'data_table', 'id': 'trips'}, 'columnDefs'),
@@ -510,3 +582,27 @@ def update_n_rows_download(row_data):
         html.I(className="fa fa-download mx-2"),
         f"Download {len(row_data)} Rows as CSV"
     ])
+
+# Handles interactivity for survey charts, callback allows users to toggle 
+# the legend (color key) for donut charts either globally (all at once) 
+# or individually for each specific survey question
+
+@callback(
+    Output({'type': 'survey-donut', 'index': MATCH}, 'figure'),
+    Input('show-legends-btn', 'n_clicks'),
+    Input('hide-legends-btn', 'n_clicks'),
+    Input({'type': 'individual-toggle', 'index': MATCH}, 'n_clicks'),
+    State({'type': 'survey-donut', 'index': MATCH}, 'figure'),
+    prevent_initial_call=True
+)
+def toggle_legends(show_all, hide_all, individual_click, fig):
+    from dash import callback_context
+    if not callback_context.triggered: raise PreventUpdate
+    trigger_id = callback_context.triggered[0]['prop_id']
+    if 'individual-toggle' in trigger_id:
+        fig['layout']['showlegend'] = not fig['layout'].get('showlegend', False)
+    elif 'show-legends-btn' in trigger_id:
+        fig['layout']['showlegend'] = True
+    elif 'hide-legends-btn' in trigger_id:
+        fig['layout']['showlegend'] = False
+    return fig
