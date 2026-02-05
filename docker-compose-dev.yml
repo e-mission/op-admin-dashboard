@@ -14,11 +14,11 @@ services:
       DASH_DEBUG_MODE: "True"
       DASH_SILENCE_ROUTES_LOGGING: "False"
       DASH_SERVER_PORT: 8050
-      DB_HOST: db
+      DB_HOST: mongodb://db/openpath_prod_walk_study_psu
       WEB_SERVER_HOST: 0.0.0.0
       SERVER_BRANCH: master
       CONFIG_PATH: "https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/configs/"
-      STUDY_CONFIG: "stage-program"
+      STUDY_CONFIG: "walk-study-psu"
       AUTH_TYPE: "basic" # the other option is cognito
       REACT_VERSION: "18.2.0"
     networks:
