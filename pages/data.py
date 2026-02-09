@@ -37,6 +37,22 @@ layout = html.Div(
             dcc.Tab(label='Surveys', value='tab-surveys-datatable'),
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
+        html.Div(
+            id='chart-toggle-container',
+            children=[
+                html.Label("Chart Type", style={'margin-right': '10px', 'font-weight': 'bold'}),
+                dmc.SegmentedControl(
+                    id="chart-type-toggle",
+                    value="donut",
+                    data=[
+                        {"value": "donut", "label": "Donut Charts"},
+                        {"value": "bar", "label": "Bar Charts"},
+                    ],
+                ),
+            ],
+            style={'display': 'none', 'margin': '12px 0'} # Hidden by default
+        ),
+
         html.Div(id='tabs-content', style={'margin': '12px '}),
         dcc.Store(id='selected-tab', data='tab-users-datatable'),  # Store to hold selected tab
         dcc.Store(id='loaded-uuids-stats', data=[]),
@@ -61,6 +77,14 @@ layout = html.Div(
     ]
 )
 
+@callback(
+    Output('chart-toggle-container', 'style'),
+    Input('tabs-datatable', 'value'),
+)
+def show_chart_toggle(tab):
+    if tab == 'tab-surveys-datatable':
+        return {'display': 'block', 'margin': '12px 0'}
+    return {'display': 'none'}
 
 def clean_location_data(df):
     with ect.Timer() as total_timer:
@@ -372,7 +396,7 @@ def build_survey_dictionaries(survey_name): # added this function to parse XML
             return question_dict, option_dict
         except: return {}, {}
 
-def populate_survey_charts(df, question_map):
+def populate_survey_charts(df, question_map, chart_type='donut'):
     viz_charts = []
     survey_cols = [c for c in df.columns if c not in ['_id', 'user_id', 'user_token', 'ts']]
     for col in survey_cols:
@@ -380,23 +404,31 @@ def populate_survey_charts(df, question_map):
         if df[col].nunique() < 15:
             counts = df[col].value_counts().reset_index()
             counts.columns = ['response', 'count']
-            fig = px.pie(counts, values='count', names='response', hole=0.6)
-            fig.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=250)
+            
+            # Logic to toggle chart types for Shankari's request
+            if chart_type == 'bar':
+                fig = px.bar(counts, x='response', y='count', color='response')
+                fig.update_layout(showlegend=False, height=250, margin=dict(t=10, b=10, l=10, r=10))
+            else:
+                fig = px.pie(counts, values='count', names='response', hole=0.6)
+                fig.update_layout(showlegend=False, height=250, margin=dict(t=10, b=10, l=10, r=10))
+
             viz_charts.append(html.Div([
                 dmc.ActionIcon(html.I(className="fa fa-chevron-right"), id={'type': 'individual-toggle', 'index': col}, variant="transparent"),
                 html.Div(f"Results: {display_question}", style={'text-align': 'center', 'height': '80px', 'overflow-y': 'auto', 'font-size': '13px'}),
                 dcc.Graph(id={'type': 'survey-donut', 'index': col}, figure=fig, config={'displayModeBar': False})
             ], style={'width': '31%', 'display': 'inline-block', 'padding': '10px', 'border': '1px solid #eee', 'margin': '1%'}))
-    return viz_charts       
+    return viz_charts 
 
 # Handle subtabs for surveys tab when there are multiple surveys
 @callback(
     Output('subtabs-surveys-content', 'children'),
     Input('subtabs-surveys', 'value'),
     Input('store-surveys', 'data'),
-    Input('store-uuids', 'data')
+    Input('store-uuids', 'data'),
+    Input('chart-type-toggle', 'value'), # toggle bar chart
 )
-def update_sub_tab(tab, store_surveys, store_uuids):
+def update_sub_tab(tab, store_surveys, store_uuids, chart_type):
 
    
     with ect.Timer() as total_timer:
@@ -451,15 +483,8 @@ def update_sub_tab(tab, store_surveys, store_uuids):
             stage4_timer
         )
 
-        viz_charts = populate_survey_charts(df, question_map)
+        viz_charts = populate_survey_charts(df, question_map, chart_type)
 
-    # Store the total time for the entire function
-    esdsq.store_dashboard_time(
-        "admin/data/update_sub_tab/total_time",
-        total_timer
-    )
-
-    # Update the return to include the charts
     return html.Div([
         dmc.Accordion(children=[
             dmc.AccordionItem([
