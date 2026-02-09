@@ -394,7 +394,9 @@ def build_survey_dictionaries(survey_name): # added this function to parse XML
                             question_dict[short_id] = question_text
                             question_dict[full_db_id] = question_text
             return question_dict, option_dict
-        except: return {}, {}
+        except Exception as e:
+            logging.error(f'Error parsing survey XML for {survey_name}: {e}') # more graceful error handling
+        return {}, {}
 
 def populate_survey_charts(df, question_map, chart_type='donut'):
     viz_charts = []
@@ -632,3 +634,4 @@ def toggle_legends(show_all, hide_all, individual_click, fig):
     elif 'hide-legends-btn' in trigger_id:
         fig['layout']['showlegend'] = False
     return fig
+
