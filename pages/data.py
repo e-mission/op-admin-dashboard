@@ -342,16 +342,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
 
     return content
 
-# Handle subtabs for surveys tab when there are multiple surveys
-@callback(
-    Output('subtabs-surveys-content', 'children'),
-    Input('subtabs-surveys', 'value'),
-    Input('store-surveys', 'data'),
-    Input('store-uuids', 'data')
-)
-def update_sub_tab(tab, store_surveys, store_uuids):
-
-    def build_survey_dictionaries(survey_name): # added this function to parse XML
+def build_survey_dictionaries(survey_name): # added this function to parse XML
         try:
             config = perm_utils.config 
             form_path = config.get('survey_info', {}).get('surveys', {}).get(survey_name, {}).get('formPath') # searching for the url where the survey's xml file is hosted  
@@ -364,7 +355,7 @@ def update_sub_tab(tab, store_surveys, store_uuids):
                 v_nodes = text_node.getElementsByTagName("value")
                 if v_nodes and v_nodes[0].firstChild:
                     itext_map[text_id] = v_nodes[0].firstChild.data
-            opt_dict, quest_dict = {}, {}
+            option_dict, question_dict = {}, {}
             for tag in ['input', 'select', 'select1']:
                 for node in doc.getElementsByTagName(tag):
                     ref = node.getAttribute("ref")
@@ -376,10 +367,38 @@ def update_sub_tab(tab, store_surveys, store_uuids):
                             l_ref = label_nodes[0].getAttribute("ref")
                             clean_id = l_ref.replace("jr:itext('", "").replace("')", "")
                             question_text = itext_map.get(clean_id, short_id)
-                            quest_dict[short_id] = question_text
-                            quest_dict[full_db_id] = question_text
-            return quest_dict, opt_dict
+                            question_dict[short_id] = question_text
+                            question_dict[full_db_id] = question_text
+            return question_dict, option_dict
         except: return {}, {}
+
+def populate_survey_charts(df, question_map):
+    viz_charts = []
+    survey_cols = [c for c in df.columns if c not in ['_id', 'user_id', 'user_token', 'ts']]
+    for col in survey_cols:
+        display_question = question_map.get(col, col.replace('_', ' '))
+        if df[col].nunique() < 15:
+            counts = df[col].value_counts().reset_index()
+            counts.columns = ['response', 'count']
+            fig = px.pie(counts, values='count', names='response', hole=0.6)
+            fig.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=250)
+            viz_charts.append(html.Div([
+                dmc.ActionIcon(html.I(className="fa fa-chevron-right"), id={'type': 'individual-toggle', 'index': col}, variant="transparent"),
+                html.Div(f"Results: {display_question}", style={'text-align': 'center', 'height': '80px', 'overflow-y': 'auto', 'font-size': '13px'}),
+                dcc.Graph(id={'type': 'survey-donut', 'index': col}, figure=fig, config={'displayModeBar': False})
+            ], style={'width': '31%', 'display': 'inline-block', 'padding': '10px', 'border': '1px solid #eee', 'margin': '1%'}))
+    return viz_charts       
+
+# Handle subtabs for surveys tab when there are multiple surveys
+@callback(
+    Output('subtabs-surveys-content', 'children'),
+    Input('subtabs-surveys', 'value'),
+    Input('store-surveys', 'data'),
+    Input('store-uuids', 'data')
+)
+def update_sub_tab(tab, store_surveys, store_uuids):
+
+   
     with ect.Timer() as total_timer:
 
         # Stage 1: Retrieve and process data for the selected subtab
@@ -387,7 +406,7 @@ def update_sub_tab(tab, store_surveys, store_uuids):
             surveys_data = store_surveys["data"]
             if tab not in surveys_data or not surveys_data[tab]: return None
             data = surveys_data[tab]
-            quest_map, opt_map = build_survey_dictionaries(tab)
+            question_map, option_map = build_survey_dictionaries(tab)
 
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/retrieve_and_process_data",
@@ -412,10 +431,10 @@ def update_sub_tab(tab, store_surveys, store_uuids):
             stage2_timer
         )
 
-        # Stage 3: Filter columns using the quest_map from Stage 1
+        # Stage 3: Filter columns using the question_map from Stage 1
         with ect.Timer() as stage3_timer:
             # we keep columns that are in our map or are essential metadata
-            allowed = list(quest_map.keys()) + ['_id', 'user_id', 'user_token', 'ts']
+            allowed = list(question_map.keys()) + ['_id', 'user_id', 'user_token', 'ts']
             df = df[[c for c in df.columns if c in allowed]]
 
         esdsq.store_dashboard_time(
@@ -432,27 +451,13 @@ def update_sub_tab(tab, store_surveys, store_uuids):
             stage4_timer
         )
 
+        viz_charts = populate_survey_charts(df, question_map)
+
     # Store the total time for the entire function
     esdsq.store_dashboard_time(
         "admin/data/update_sub_tab/total_time",
         total_timer
     )
-
-    # the visualization of the donut chart data
-    viz_charts = []
-    survey_cols = [c for c in df.columns if c not in ['_id', 'user_id', 'user_token', 'ts']]
-    for col in survey_cols:
-        display_question = quest_map.get(col, col.replace('_', ' '))
-        if df[col].nunique() < 15:
-            counts = df[col].value_counts().reset_index()
-            counts.columns = ['response', 'count']
-            fig = px.pie(counts, values='count', names='response', hole=0.6)
-            fig.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=250)
-            viz_charts.append(html.Div([
-                dmc.ActionIcon(html.I(className="fa fa-chevron-right"), id={'type': 'individual-toggle', 'index': col}, variant="transparent"),
-                html.Div(f"Results: {display_question}", style={'text-align': 'center', 'height': '80px', 'overflow-y': 'auto', 'font-size': '13px'}),
-                dcc.Graph(id={'type': 'survey-donut', 'index': col}, figure=fig, config={'displayModeBar': False})
-            ], style={'width': '31%', 'display': 'inline-block', 'padding': '10px', 'border': '1px solid #eee', 'margin': '1%'}))
 
     # Update the return to include the charts
     return html.Div([
