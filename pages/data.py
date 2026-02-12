@@ -368,9 +368,16 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
 
 def build_survey_dictionaries(survey_name): # added this function to parse XML
         try:
-            config = perm_utils.config 
-            form_path = config.get('survey_info', {}).get('surveys', {}).get(survey_name, {}).get('formPath') # searching for the url where the survey's xml file is hosted  
+            
+            psu_xml_map = {
+                "UserProfileSurvey": "https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/survey_resources/walk-study-psu/walkstudypsu-onboarding-v2.xml",
+                "TripConfirmSurvey": "https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/survey_resources/walk-study-psu/walkstudypsu-trip-v3.xml"
+            }
+            
+            form_path = psu_xml_map.get(survey_name)
             if not form_path: return {}, {}
+            
+            print(f"DEBUG: Actually fetching PSU XML for {survey_name} from GitHub...")
             result = urllib.request.urlopen(form_path)
             doc = minidom.parse(result) 
             itext_map = {}
@@ -400,28 +407,48 @@ def build_survey_dictionaries(survey_name): # added this function to parse XML
 
 def populate_survey_charts(df, question_map, chart_type='donut'):
     viz_charts = []
+    # filter metadata
     survey_cols = [c for c in df.columns if c not in ['_id', 'user_id', 'user_token', 'ts']]
+    
     for col in survey_cols:
+        # map internal ids to human text
         display_question = question_map.get(col, col.replace('_', ' '))
-        if df[col].nunique() < 15:
-            counts = df[col].value_counts().reset_index()
-            counts.columns = ['response', 'count']
+        
+        # skip open-ended text fields
+        if any(x in col.lower() for x in ["other", "explain"]):
+            continue
+
+        counts = df[col].value_counts().reset_index()
+        counts.columns = ['response', 'count']
+        
+        if counts.empty:
+            continue
+
+        if chart_type == 'bar':
+            # stacking data into a single proportional bar
+            counts['group'] = "Study Total"
+            fig = px.bar(counts, x='group', y='count', color='response', text_auto='.1f')
+            # MOVED barnorm here to fix the TypeError
+            fig.update_layout(
+                barmode='stack',
+                barnorm='percent',
+                xaxis_title=None,
+                yaxis_title="Percent (%)",
+                showlegend=True
+            )
+        else:
+            fig = px.pie(counts, values='count', names='response', hole=0.6)
+            fig.update_layout(showlegend=False)
+
+        fig.update_layout(height=300, margin=dict(t=10, b=10, l=10, r=10))
+
+        viz_charts.append(html.Div([
+            dmc.ActionIcon(html.I(className="fa fa-chevron-right"), id={'type': 'individual-toggle', 'index': col}, variant="transparent"),
+            html.Div(f"{display_question}", style={'text-align': 'center', 'height': '60px', 'overflow-y': 'auto', 'font-size': '13px', 'font-weight': 'bold'}),
+            dcc.Graph(id={'type': 'survey-donut', 'index': col}, figure=fig, config={'displayModeBar': False})
+        ], style={'width': '31%', 'display': 'inline-block', 'padding': '5px', 'border': '1px solid #eee', 'margin': '1%'}))
             
-            # Logic to toggle chart types for Shankari's request
-            if chart_type == 'bar':
-                fig = px.bar(counts, x='response', y='count', color='response')
-                fig.update_layout(showlegend=False, height=250, margin=dict(t=10, b=10, l=10, r=10))
-            else:
-                fig = px.pie(counts, values='count', names='response', hole=0.6)
-                fig.update_layout(showlegend=False, height=250, margin=dict(t=10, b=10, l=10, r=10))
-
-            viz_charts.append(html.Div([
-                dmc.ActionIcon(html.I(className="fa fa-chevron-right"), id={'type': 'individual-toggle', 'index': col}, variant="transparent"),
-                html.Div(f"Results: {display_question}", style={'text-align': 'center', 'height': '80px', 'overflow-y': 'auto', 'font-size': '13px'}),
-                dcc.Graph(id={'type': 'survey-donut', 'index': col}, figure=fig, config={'displayModeBar': False})
-            ], style={'width': '31%', 'display': 'inline-block', 'padding': '10px', 'border': '1px solid #eee', 'margin': '1%'}))
-    return viz_charts 
-
+    return viz_charts
 # Handle subtabs for surveys tab when there are multiple surveys
 @callback(
     Output('subtabs-surveys-content', 'children'),
