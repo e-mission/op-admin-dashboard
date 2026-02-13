@@ -366,7 +366,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
 
     return content
 
-def build_survey_dictionaries(survey_name): # added this function to parse XML
+def build_survey_dictionaries(survey_name: str): # added this function to parse XML
         try:
             
             psu_xml_map = {
@@ -375,7 +375,7 @@ def build_survey_dictionaries(survey_name): # added this function to parse XML
             }
             
             form_path = psu_xml_map.get(survey_name)
-            if not form_path: return {}, {}
+            if not form_path: return {}, {}, [] # Return empty list for categorical fields
             
             print(f"DEBUG: Actually fetching PSU XML for {survey_name} from GitHub...")
             result = urllib.request.urlopen(form_path)
@@ -387,12 +387,17 @@ def build_survey_dictionaries(survey_name): # added this function to parse XML
                 if v_nodes and v_nodes[0].firstChild:
                     itext_map[text_id] = v_nodes[0].firstChild.data
             option_dict, question_dict = {}, {}
+            categorical_fields = [] # list to filter for categorical data per Jack's request
             for tag in ['input', 'select', 'select1']:
                 for node in doc.getElementsByTagName(tag):
                     ref = node.getAttribute("ref")
                     if ref:
                         parts = ref.split('/')
                         short_id, full_db_id = parts[-1], ".".join(parts[2:])
+                        # Categorical data comes from select/select1 tags skip open-ended 'input'
+                        if tag in ['select', 'select1']:
+                            categorical_fields.append(short_id)
+                            categorical_fields.append(full_db_id)
                         label_nodes = node.getElementsByTagName("label")
                         if label_nodes:
                             l_ref = label_nodes[0].getAttribute("ref")
@@ -400,15 +405,16 @@ def build_survey_dictionaries(survey_name): # added this function to parse XML
                             question_text = itext_map.get(clean_id, short_id)
                             question_dict[short_id] = question_text
                             question_dict[full_db_id] = question_text
-            return question_dict, option_dict
+            return question_dict, option_dict, categorical_fields
         except Exception as e:
             logging.error(f'Error parsing survey XML for {survey_name}: {e}') # more graceful error handling
-        return {}, {}
+        return {}, {}, [] # Return empty list for categorical fields
 
-def populate_survey_charts(df, question_map, chart_type='donut'):
+def populate_survey_charts(df: pd.DataFrame, question_map: dict, categorical_fields: list, chart_type: str = 'donut'):
     viz_charts = []
     # filter metadata
-    survey_cols = [c for c in df.columns if c not in ['_id', 'user_id', 'user_token', 'ts']]
+    # Updated: Only visualize columns identified as categorical from the XML parser
+    survey_cols = [c for c in df.columns if c in categorical_fields]
     
     for col in survey_cols:
         # map internal ids to human text
@@ -427,13 +433,14 @@ def populate_survey_charts(df, question_map, chart_type='donut'):
         if chart_type == 'bar':
             # stacking data into a single proportional bar
             counts['group'] = "Study Total"
-            fig = px.bar(counts, x='group', y='count', color='response', text_auto='.1f')
+            # Updated: set orientation='h' and swap x/y for better label readability
+            fig = px.bar(counts, y='group', x='count', color='response', orientation='h', text_auto='.1f')
             # MOVED barnorm here to fix the TypeError
             fig.update_layout(
                 barmode='stack',
                 barnorm='percent',
-                xaxis_title=None,
-                yaxis_title="Percent (%)",
+                xaxis_title="Percent (%)",
+                yaxis_title=None,
                 showlegend=True
             )
         else:
@@ -467,7 +474,8 @@ def update_sub_tab(tab, store_surveys, store_uuids, chart_type):
             surveys_data = store_surveys["data"]
             if tab not in surveys_data or not surveys_data[tab]: return None
             data = surveys_data[tab]
-            question_map, option_map = build_survey_dictionaries(tab)
+            # Updated: Receive the categorical_fields list here
+            question_map, option_map, categorical_fields = build_survey_dictionaries(tab)
 
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/retrieve_and_process_data",
@@ -512,7 +520,8 @@ def update_sub_tab(tab, store_surveys, store_uuids, chart_type):
             stage4_timer
         )
 
-        viz_charts = populate_survey_charts(df, question_map, chart_type)
+        # Updated: Pass categorical_fields to filter out text inputs like ZIP codes
+        viz_charts = populate_survey_charts(df, question_map, categorical_fields, chart_type)
 
     return html.Div([
         dmc.Accordion(children=[
@@ -661,4 +670,5 @@ def toggle_legends(show_all, hide_all, individual_click, fig):
     elif 'hide-legends-btn' in trigger_id:
         fig['layout']['showlegend'] = False
     return fig
+
 
