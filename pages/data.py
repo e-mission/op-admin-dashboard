@@ -11,7 +11,9 @@ import arrow
 import logging
 import pandas as pd
 from dash.exceptions import PreventUpdate
-
+import plotly.express as px # for the donut and bar charts
+import urllib.request # for fetching the survey from github
+import xml.dom.minidom as minidom # for organizing and parsing xml files
 from utils import constants
 from utils import permissions as perm_utils
 from utils import db_utils
@@ -35,6 +37,22 @@ layout = html.Div(
             dcc.Tab(label='Surveys', value='tab-surveys-datatable'),
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
+        html.Div(
+            id='chart-toggle-container',
+            children=[
+                html.Label("Chart Type", style={'margin-right': '10px', 'font-weight': 'bold'}),
+                dmc.SegmentedControl(
+                    id="chart-type-toggle",
+                    value="donut",
+                    data=[
+                        {"value": "donut", "label": "Donut Charts"},
+                        {"value": "bar", "label": "Bar Charts"},
+                    ],
+                ),
+            ],
+            style={'display': 'none', 'margin': '12px 0'} # Hidden by default
+        ),
+
         html.Div(id='tabs-content', style={'margin': '12px '}),
         dcc.Store(id='selected-tab', data='tab-users-datatable'),  # Store to hold selected tab
         dcc.Store(id='loaded-uuids-stats', data=[]),
@@ -59,6 +77,14 @@ layout = html.Div(
     ]
 )
 
+@callback(
+    Output('chart-toggle-container', 'style'),
+    Input('tabs-datatable', 'value'),
+)
+def show_chart_toggle(tab):
+    if tab == 'tab-surveys-datatable':
+        return {'display': 'block', 'margin': '12px 0'}
+    return {'display': 'none'}
 
 def clean_location_data(df):
     with ect.Timer() as total_timer:
@@ -88,7 +114,7 @@ def clean_location_data(df):
 
     return df
 
-def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids, key_list):
+def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids: dict, key_list: str):
     with ect.Timer() as total_timer:
 
         # Stage 1: Query trajectories
@@ -340,23 +366,117 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
 
     return content
 
+def build_survey_dictionaries(survey_name: str): # added this function to parse XML
+        try:
+            
+            psu_xml_map = {
+                "UserProfileSurvey": "https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/survey_resources/walk-study-psu/walkstudypsu-onboarding-v2.xml",
+                "TripConfirmSurvey": "https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/survey_resources/walk-study-psu/walkstudypsu-trip-v3.xml"
+            }
+            
+            form_path = psu_xml_map.get(survey_name)
+            if not form_path: return {}, {}, [] # Return empty list for categorical fields
+            
+            print(f"DEBUG: Actually fetching PSU XML for {survey_name} from GitHub...")
+            result = urllib.request.urlopen(form_path)
+            doc = minidom.parse(result) 
+            itext_map = {}
+            for text_node in doc.getElementsByTagName("text"):
+                text_id = text_node.getAttribute("id")
+                v_nodes = text_node.getElementsByTagName("value")
+                if v_nodes and v_nodes[0].firstChild:
+                    itext_map[text_id] = v_nodes[0].firstChild.data
+            option_dict, question_dict = {}, {}
+            categorical_fields = [] # list to filter for categorical data per Jack's request
+            for tag in ['input', 'select', 'select1']:
+                for node in doc.getElementsByTagName(tag):
+                    ref = node.getAttribute("ref")
+                    if ref:
+                        parts = ref.split('/')
+                        short_id, full_db_id = parts[-1], ".".join(parts[2:])
+                        # Categorical data comes from select/select1 tags skip open-ended 'input'
+                        if tag in ['select', 'select1']:
+                            categorical_fields.append(short_id)
+                            categorical_fields.append(full_db_id)
+                        label_nodes = node.getElementsByTagName("label")
+                        if label_nodes:
+                            l_ref = label_nodes[0].getAttribute("ref")
+                            clean_id = l_ref.replace("jr:itext('", "").replace("')", "")
+                            question_text = itext_map.get(clean_id, short_id)
+                            question_dict[short_id] = question_text
+                            question_dict[full_db_id] = question_text
+            return question_dict, option_dict, categorical_fields
+        except Exception as e:
+            logging.error(f'Error parsing survey XML for {survey_name}: {e}') # more graceful error handling
+        return {}, {}, [] # Return empty list for categorical fields
+
+def populate_survey_charts(df: pd.DataFrame, question_map: dict, categorical_fields: list, chart_type: str = 'donut'):
+    viz_charts = []
+    # filter metadata
+    # Updated: Only visualize columns identified as categorical from the XML parser
+    survey_cols = [c for c in df.columns if c in categorical_fields]
+    
+    for col in survey_cols:
+        # map internal ids to human text
+        display_question = question_map.get(col, col.replace('_', ' '))
+        
+        # skip open-ended text fields
+        if any(x in col.lower() for x in ["other", "explain"]):
+            continue
+
+        counts = df[col].value_counts().reset_index()
+        counts.columns = ['response', 'count']
+        
+        if counts.empty:
+            continue
+
+        if chart_type == 'bar':
+            # stacking data into a single proportional bar
+            counts['group'] = "Study Total"
+            # Updated: set orientation='h' and swap x/y for better label readability
+            fig = px.bar(counts, y='group', x='count', color='response', orientation='h', text_auto='.1f')
+            # MOVED barnorm here to fix the TypeError
+            fig.update_layout(
+                barmode='stack',
+                barnorm='percent',
+                xaxis_title="Percent (%)",
+                yaxis_title=None,
+                showlegend=True
+            )
+        else:
+            fig = px.pie(counts, values='count', names='response', hole=0.6)
+            fig.update_layout(showlegend=False)
+
+        fig.update_layout(height=300, margin=dict(t=10, b=10, l=10, r=10))
+
+        viz_charts.append(html.Div([
+            dmc.ActionIcon(html.I(className="fa fa-chevron-right"), id={'type': 'individual-toggle', 'index': col}, variant="transparent"),
+            html.Div(f"{display_question}", style={'text-align': 'center', 'height': '60px', 'overflow-y': 'auto', 'font-size': '13px', 'font-weight': 'bold'}),
+            dcc.Graph(id={'type': 'survey-donut', 'index': col}, figure=fig, config={'displayModeBar': False})
+        ], style={'width': '31%', 'display': 'inline-block', 'padding': '5px', 'border': '1px solid #eee', 'margin': '1%'}))
+            
+    return viz_charts
 # Handle subtabs for surveys tab when there are multiple surveys
 @callback(
     Output('subtabs-surveys-content', 'children'),
     Input('subtabs-surveys', 'value'),
     Input('store-surveys', 'data'),
-    Input('store-uuids', 'data')
+    Input('store-uuids', 'data'),
+    Input('chart-type-toggle', 'value'), # toggle bar chart
 )
-def update_sub_tab(tab, store_surveys, store_uuids):
+def update_sub_tab(tab, store_surveys, store_uuids, chart_type):
+
+   
     with ect.Timer() as total_timer:
 
         # Stage 1: Retrieve and process data for the selected subtab
-        with ect.Timer() as stage1_timer:
+        with ect.Timer() as stage1_timer: # records time to fetch data verify it exists and map IDs to human questions
             surveys_data = store_surveys["data"]
-            if tab in surveys_data:
-                data = surveys_data[tab]
-                if data:
-                    columns = list(data[0].keys())
+            if tab not in surveys_data or not surveys_data[tab]: return None
+            data = surveys_data[tab]
+            # Updated: Receive the categorical_fields list here
+            question_map, option_map, categorical_fields = build_survey_dictionaries(tab)
+
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/retrieve_and_process_data",
             stage1_timer
@@ -380,9 +500,12 @@ def update_sub_tab(tab, store_surveys, store_uuids):
             stage2_timer
         )
 
-        # Stage 3: Filter columns based on the allowed set
+        # Stage 3: Filter columns using the question_map from Stage 1
         with ect.Timer() as stage3_timer:
-            df = df.drop(columns=[col for col in df.columns if col not in columns])
+            # we keep columns that are in our map or are essential metadata
+            allowed = list(question_map.keys()) + ['_id', 'user_id', 'user_token', 'ts']
+            df = df[[c for c in df.columns if c in allowed]]
+
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/filter_columns",
             stage3_timer
@@ -390,19 +513,34 @@ def update_sub_tab(tab, store_surveys, store_uuids):
 
         # Stage 4: Populate the datatable with the cleaned DataFrame
         with ect.Timer() as stage4_timer:
-            result = populate_datatable(df, store_uuids, 'surveys')
+            table_result = populate_datatable(df, store_uuids, 'surveys') # times the table generation and stores it to be displayed alongside the new charts
+            
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/populate_datatable",
             stage4_timer
         )
 
-    # Store the total time for the entire function
-    esdsq.store_dashboard_time(
-        "admin/data/update_sub_tab/total_time",
-        total_timer
-    )
+        # Updated: Pass categorical_fields to filter out text inputs like ZIP codes
+        viz_charts = populate_survey_charts(df, question_map, categorical_fields, chart_type)
 
-    return result
+    return html.Div([
+        dmc.Accordion(children=[
+            dmc.AccordionItem([
+                dmc.AccordionControl(f"Survey Summary Dashboard: {tab}"),
+                dmc.AccordionPanel([
+                    html.Div([
+                        dmc.Button("Show All Legends", id="show-legends-btn", variant="outline", size="xs", style={'margin-right': '10px'}),
+                        dmc.Button("Hide All Legends", id="hide-legends-btn", variant="outline", size="xs")
+                    ], style={'margin-bottom': '20px'}),
+                    html.Div(viz_charts, style={'display': 'flex', 'flex-wrap': 'wrap', 'justify-content': 'center'})
+                ])
+            ], value="summary-panel")
+        ]),
+        html.Hr(style={'margin-top': '40px'}),
+        table_result 
+    ])
+
+
 
 @callback(
     Output({'type': 'data_table', 'id': 'trips'}, 'columnDefs'),
@@ -510,3 +648,27 @@ def update_n_rows_download(row_data):
         html.I(className="fa fa-download mx-2"),
         f"Download {len(row_data)} Rows as CSV"
     ])
+
+# lets users interact with survey chart, like toggle legends individually or globally
+
+@callback(
+    Output({'type': 'survey-donut', 'index': MATCH}, 'figure'),
+    Input('show-legends-btn', 'n_clicks'),
+    Input('hide-legends-btn', 'n_clicks'),
+    Input({'type': 'individual-toggle', 'index': MATCH}, 'n_clicks'),
+    State({'type': 'survey-donut', 'index': MATCH}, 'figure'),
+    prevent_initial_call=True
+)
+def toggle_legends(show_all, hide_all, individual_click, fig):
+    from dash import callback_context
+    if not callback_context.triggered: raise PreventUpdate
+    trigger_id = callback_context.triggered[0]['prop_id']
+    if 'individual-toggle' in trigger_id:
+        fig['layout']['showlegend'] = not fig['layout'].get('showlegend', False)
+    elif 'show-legends-btn' in trigger_id:
+        fig['layout']['showlegend'] = True
+    elif 'hide-legends-btn' in trigger_id:
+        fig['layout']['showlegend'] = False
+    return fig
+
+
