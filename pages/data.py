@@ -378,17 +378,20 @@ def build_survey_dictionaries(survey_name: str): # added this function to parse 
                 if v_nodes and v_nodes[0].firstChild:
                     itext_map[text_id] = v_nodes[0].firstChild.data
             option_dict, question_dict = {}, {}
-            categorical_fields = [] # list to filter for categorical data per Jack's request
+            categorical_fields = [] # list to filter for categorical data
+            multi_select_fields = [] # tracking multi-select questions for separate bar logic # Added this to distinguish question types
             for tag in ['input', 'select', 'select1']:
                 for node in doc.getElementsByTagName(tag):
                     ref = node.getAttribute("ref")
                     if ref:
                         parts = ref.split('/')
                         short_id, full_db_id = parts[-1], ".".join(parts[2:])
-                        # because only select1 (single-choice) questions are suitable for these charts
-                        if tag == 'select1':  # changed to strictly select1 to exclude multi-select fields 
+                        if tag in ['select', 'select1']: # included both select types to allow multi-select support 
                             categorical_fields.append(short_id)
                             categorical_fields.append(full_db_id)
+                        if tag == 'select': # tracking multi-select separately to apply the 'separate bars' logic later
+                            multi_select_fields.append(short_id)
+                            multi_select_fields.append(full_db_id)
                         label_nodes = node.getElementsByTagName("label")
                         if label_nodes:
                             l_ref = label_nodes[0].getAttribute("ref")
@@ -396,15 +399,15 @@ def build_survey_dictionaries(survey_name: str): # added this function to parse 
                             question_text = itext_map.get(clean_id, short_id)
                             question_dict[short_id] = question_text
                             question_dict[full_db_id] = question_text
-            return question_dict, option_dict, categorical_fields
+            return question_dict, option_dict, categorical_fields, multi_select_fields # Added multi_select_fields to the return so the app doesn't crash
         except Exception as e:
-            logging.error(f'Error parsing survey XML for {survey_name}: {e}') # more graceful error handling
-        return {}, {}, [] # Return empty list for categorical fields
+            logging.error(f'Error parsing survey XML for {survey_name}: {e}') 
+        return {}, {}, [], [] # Return empty list for categorical fields
 
-def populate_survey_charts(df: pd.DataFrame, question_map: dict, categorical_fields: list, chart_type: str = 'donut'):
+def populate_survey_charts(df: pd.DataFrame, question_map: dict, categorical_fields: list, multi_select_fields: list, chart_type: str = 'donut'): # Added multi_select_fields as a parameter
     viz_charts = []
     # filter metadata
-    # Updated: Only visualize columns identified as categorical from the XML parser
+    # Only visualize columns identified as categorical from the XML parser
     survey_cols = [c for c in df.columns if c in categorical_fields]
     
     for col in survey_cols:
@@ -415,7 +418,13 @@ def populate_survey_charts(df: pd.DataFrame, question_map: dict, categorical_fie
         if any(x in col.lower() for x in ["other", "explain"]):
             continue
 
-        counts = df[col].value_counts().reset_index()
+        if col in multi_select_fields: 
+            # Splitting multi-select strings so each choice is counted individually
+            counts = df[col].dropna().astype(str).str.split().explode().value_counts().reset_index()
+        else:
+            # Standard counting for single-choice questions to keep the visualization focused 
+            counts = df[col].value_counts().reset_index()
+            
         counts.columns = ['response', 'count']
         
         if counts.empty:
@@ -462,9 +471,8 @@ def update_sub_tab(tab, store_surveys, store_uuids, chart_type):
             surveys_data = store_surveys["data"]
             if tab not in surveys_data or not surveys_data[tab]: return None
             data = surveys_data[tab]
-            # Updated: Receive the categorical_fields list here
-            question_map, option_map, categorical_fields = build_survey_dictionaries(tab)
-
+            # Receive both categorical and multi-select lists from the dictionary builder
+            question_map, option_map, categorical_fields, multi_select_fields = build_survey_dictionaries(tab)
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/retrieve_and_process_data",
             stage1_timer
@@ -508,8 +516,8 @@ def update_sub_tab(tab, store_surveys, store_uuids, chart_type):
             stage4_timer
         )
 
-        # Updated: Pass categorical_fields to filter out text inputs like ZIP codes
-        viz_charts = populate_survey_charts(df, question_map, categorical_fields, chart_type)
+        # pass categorical_fields to filter out text inputs like ZIP codes
+        viz_charts = populate_survey_charts(df, question_map, categorical_fields, multi_select_fields, chart_type) # Added multi_select_fields
 
     return html.Div([
         dmc.Accordion(children=[
