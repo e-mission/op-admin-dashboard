@@ -280,7 +280,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
                             dcc.Tabs(id='subtabs-surveys', value=list(data.keys())[0], children=[
                                 dcc.Tab(label=key, value=key) for key in data
                             ]),
-                            html.Div( # Added chart toggle div here under the sub-tabs 
+                            html.Div( # chart toggle div here under the sub-tabs 
                                 id='chart-toggle-container', 
                                 children=[ 
                                     html.Label("Chart Type", style={'margin-right': '10px', 'font-weight': 'bold'}), 
@@ -357,7 +357,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
 
     return content
 
-def build_survey_dictionaries(survey_name: str): # added this function to parse XML
+def build_survey_dictionaries(survey_name: str): # to parse XML
         try:
             
             psu_xml_map = {
@@ -379,7 +379,7 @@ def build_survey_dictionaries(survey_name: str): # added this function to parse 
                     itext_map[text_id] = v_nodes[0].firstChild.data
             option_dict, question_dict = {}, {}
             categorical_fields = [] # list to filter for categorical data
-            multi_select_fields = [] # tracking multi-select questions for separate bar logic # Added this to distinguish question types
+            multi_select_fields = [] # tracking multi-select questions for separate bar logic
             for tag in ['input', 'select', 'select1']:
                 for node in doc.getElementsByTagName(tag):
                     ref = node.getAttribute("ref")
@@ -399,12 +399,12 @@ def build_survey_dictionaries(survey_name: str): # added this function to parse 
                             question_text = itext_map.get(clean_id, short_id)
                             question_dict[short_id] = question_text
                             question_dict[full_db_id] = question_text
-            return question_dict, option_dict, categorical_fields, multi_select_fields # Added multi_select_fields to the return so the app doesn't crash
+            return question_dict, option_dict, categorical_fields, multi_select_fields # multi_select_fields to the return so the app doesn't crash
         except Exception as e:
             logging.error(f'Error parsing survey XML for {survey_name}: {e}') 
         return {}, {}, [], [] # Return empty list for categorical fields
 
-def populate_survey_charts(df: pd.DataFrame, question_map: dict, categorical_fields: list, multi_select_fields: list, chart_type: str = 'donut'): # Added multi_select_fields as a parameter
+def populate_survey_charts(df: pd.DataFrame, question_map: dict, categorical_fields: list, multi_select_fields: list, chart_type: str = 'donut'):
     viz_charts = []
     # filter metadata
     # Only visualize columns identified as categorical from the XML parser
@@ -419,31 +419,61 @@ def populate_survey_charts(df: pd.DataFrame, question_map: dict, categorical_fie
             continue
 
         if col in multi_select_fields: 
+            total_respondents = len(df[col].dropna())
             # Splitting multi-select strings so each choice is counted individually
             counts = df[col].dropna().astype(str).str.split().explode().value_counts().reset_index()
+            counts.columns = ['response', 'count']
+            
+            if counts.empty:
+                continue
+                
+            counts['percent'] = (counts['count'] / total_respondents) * 100
+            counts = counts.sort_values('percent', ascending=True)
+            
+            if chart_type == 'bar':
+                fig = px.bar(counts, y='response', x='percent', orientation='h', color='response')
+                fig.update_traces(
+                    texttemplate='%{x:.0f}%',
+                    textposition='outside',
+                    cliponaxis=False,
+                    showlegend=False
+                )
+                fig.update_layout(
+                    xaxis_title=None,
+                    yaxis_title=None,
+                    showlegend=False,
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+                    yaxis=dict(showgrid=False, zeroline=False)
+                )
+            else:
+                # Changed colors so you can tell the difference between multi select donut charts and single choice charts
+                fig = px.pie(counts, values='count', names='response', hole=0.6, color_discrete_sequence=px.colors.qualitative.Vivid)
+                fig.update_traces(text=counts['percent'].apply(lambda x: f"{x:.0f}%"), textinfo='text', hovertemplate='%{label}: %{text}')
+                fig.update_layout(showlegend=True)
+                
         else:
             # Standard counting for single-choice questions to keep the visualization focused 
             counts = df[col].value_counts().reset_index()
+            counts.columns = ['response', 'count']
             
-        counts.columns = ['response', 'count']
-        
-        if counts.empty:
-            continue
+            if counts.empty:
+                continue
 
-        if chart_type == 'bar':
-            counts['group'] = "Study Total"
-            fig = px.bar(counts, y='group', x='count', color='response', orientation='h', text_auto='.1f')
-            fig.update_layout(
-                barmode='stack',
-                barnorm='percent',
-                xaxis_title="Percent (%)",
-                yaxis_title=None,
-                showlegend=True,
-                legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5) # Moved legend to bottom center horizontally
-            )
-        else:
-            fig = px.pie(counts, values='count', names='response', hole=0.6)
-            fig.update_layout(showlegend=True)
+            if chart_type == 'bar':
+                counts['group'] = "Study Total"
+                fig = px.bar(counts, y='group', x='count', color='response', orientation='h', text_auto='.1f')
+                fig.update_layout(
+                    barmode='stack',
+                    barnorm='percent',
+                    xaxis_title="Percent (%)",
+                    yaxis_title=None,
+                    showlegend=True,
+                    legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5)
+                )
+            else:
+                fig = px.pie(counts, values='count', names='response', hole=0.6)
+                fig.update_layout(showlegend=True)
 
         fig.update_layout(height=300, margin=dict(t=10, b=10, l=10, r=10))
 
@@ -517,7 +547,7 @@ def update_sub_tab(tab, store_surveys, store_uuids, chart_type):
         )
 
         # pass categorical_fields to filter out text inputs like ZIP codes
-        viz_charts = populate_survey_charts(df, question_map, categorical_fields, multi_select_fields, chart_type) # Added multi_select_fields
+        viz_charts = populate_survey_charts(df, question_map, categorical_fields, multi_select_fields, chart_type) #  multi_select_fields
 
     return html.Div([
         dmc.Accordion(children=[
