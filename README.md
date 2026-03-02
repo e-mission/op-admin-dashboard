@@ -33,7 +33,7 @@ The `CONFIG_PATH` environment variable is used to specify the location of the co
 a Docker container to run properly. This means that the Docker container will attempt to download the configuration
 files from the specified URL. The current path to the raw format of nrel configs is:
 
-https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/configs/
+https://raw.githubusercontent.com/e-mission/openpath-deployment-configs/main/configs/
 
 
 ### STUDY_CONFIG
