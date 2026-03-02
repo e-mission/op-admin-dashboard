@@ -17,8 +17,6 @@ import dash_bootstrap_components as dbc
 from dash import Input, Output, dcc, html, Dash
 import dash_mantine_components as dmc
 import dash_auth
-import asyncio
-import requests
 import base64
 import logging
 import base64
@@ -27,9 +25,6 @@ import base64
 # until https://github.com/plotly/dash/issues/532 is fixed
 if os.getenv('DASH_DEBUG_MODE', 'True').lower() == 'true':
     logging.basicConfig(level=logging.DEBUG)
-
-import emission.analysis.configs.dynamic_config as eacd
-import emcommon.util as emcu
 
 from utils.datetime_utils import iso_to_date_only
 from utils.db_utils import df_to_filtered_records, query_users, query_confirmed_trips, query_demographics
@@ -369,12 +364,8 @@ def update_store_trips(start_date, end_date, timezone, excluded_uuids):
     # cancel=[Input("_pages_location", "pathname")],
 )
 def load_label_options(_):
-    config = eacd.get_dynamic_config()
-    if 'label-options' not in config:
-        return asyncio.run(
-            emcu.read_json_resource("label-options.default.json")
-        )
-    return requests.get(config['label-options']).json()
+    # config is imported from utils.permissions, where we load it fully
+    return config['label_options']
 
 # Define the callback to display the page content based on the URL path
 @app.callback(

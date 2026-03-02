@@ -20,11 +20,10 @@ from dash_iconify import DashIconify
 import emission.core.wrapper.user as ecwu
 import emcommon.diary.base_modes as emcdb
 import emcommon.bluetooth.ble_matching as emcble
-import emission.analysis.configs.dynamic_config as eacd
+import emission.core.deployment_config as ecd
 
-from utils.permissions import has_permission
+from utils.permissions import has_permission, config
 
-config = eacd.get_dynamic_config()
 ble_enabled = config.get('vehicle_identities')
 
 

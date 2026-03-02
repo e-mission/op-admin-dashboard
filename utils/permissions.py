@@ -1,10 +1,9 @@
-import requests
 import logging
 from utils import constants
 
-import emission.analysis.configs.dynamic_config as eacd
+import emission.core.deployment_config as ecd
 
-config = eacd.get_dynamic_config()
+config = ecd.get_deployment_config()
 surveyinfo = config.get("survey_info",
     {
       "surveys": {

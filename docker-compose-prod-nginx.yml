@@ -16,7 +16,7 @@ services:
       DB_HOST: db
       WEB_SERVER_HOST: 0.0.0.0
       SERVER_BRANCH: master
-      CONFIG_PATH: "https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/configs/"
+      CONFIGS_URL: "https://raw.githubusercontent.com/e-mission/op-deployment-configs/main/configs/"
       STUDY_CONFIG: "stage-program"
       AUTH_TYPE: "basic" # the other option is cognito
       DASH_REQUESTS_PATHNAME_PREFIX: "/admin/"
