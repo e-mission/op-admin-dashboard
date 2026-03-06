@@ -75,8 +75,9 @@ def query_users():
         logging.debug("Querying for all User Profiles")
         profiles_entries = edb.get_profile_db().find()
         profiles_df = pd.json_normalize(list(profiles_entries))
-        profiles_df['user_id'] = profiles_df['user_id'].apply(str)
-        profiles_df.drop(columns=["_id"], inplace=True)
+        if not profiles_df.empty and 'user_id' in profiles_df.columns: # Added check to skip if dataframe is empty
+            profiles_df['user_id'] = profiles_df['user_id'].apply(str)
+        profiles_df.drop(columns=["_id"], errors='ignore', inplace=True) # forces to ignore the missing column instead of crashing
     esdsq.store_dashboard_time(
         "admin/db_utils/query_users/query_profiles",
         profiles_timer,
@@ -84,7 +85,10 @@ def query_users():
 
     with ect.Timer() as merge_timer:
         logging.debug("Merging UUIDs and Profiles")
-        users_df = pd.merge(uuids_df, profiles_df, on="user_id", how="left", suffixes=('', '_profile'))
+        if profiles_df.empty or 'user_id' not in profiles_df.columns:
+           users_df = uuids_df
+        else:
+            users_df = pd.merge(uuids_df, profiles_df, on="user_id", how="left", suffixes=('', '_profile'))
     esdsq.store_dashboard_time(
         "admin/db_utils/query_users/merge_uuids_and_profiles",
         merge_timer,
