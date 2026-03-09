@@ -6,6 +6,7 @@ The workaround is to check if the input value is None.
 """
 from dash import dcc, html, Input, Output, callback, register_page, State, set_props, MATCH
 import dash_ag_grid as dag
+import dash_mantine_components as dmc
 import arrow
 import logging
 import pandas as pd
@@ -18,6 +19,7 @@ from utils.db_utils import df_to_filtered_records, query_trajectories
 from utils.datetime_utils import iso_to_date_only
 import emission.core.timer as ect
 import emission.storage.decorations.stats_queries as esdsq
+import emission.storage.json_wrappers as esj
 from utils.ux_utils import skeleton
 from utils.datetime_utils import ts_to_iso
 register_page(__name__, path="/data")
@@ -27,14 +29,14 @@ intro = """## Data"""
 layout = html.Div(
     [
         dcc.Markdown(intro),
-        dcc.Tabs(id="tabs-datatable", value='tab-uuids-datatable', children=[
-            dcc.Tab(label='UUIDs', value='tab-uuids-datatable'),
+        dcc.Tabs(id="tabs-datatable", value='tab-users-datatable', children=[
+            dcc.Tab(label='Users', value='tab-users-datatable'),
             dcc.Tab(label='Trips', value='tab-trips-datatable'),
-            dcc.Tab(label='Demographics', value='tab-demographics-datatable'),
+            dcc.Tab(label='Surveys', value='tab-surveys-datatable'),
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
         html.Div(id='tabs-content', style={'margin': '12px '}),
-        dcc.Store(id='selected-tab', data='tab-uuids-datatable'),  # Store to hold selected tab
+        dcc.Store(id='selected-tab', data='tab-users-datatable'),  # Store to hold selected tab
         dcc.Store(id='loaded-uuids-stats', data=[]),
         dcc.Store(id='all-uuids-stats-loaded', data=False),
         # RadioItems for key list switch, wrapped in a div that can hide/show
@@ -140,14 +142,14 @@ def show_keylist_switch(tab):
     Input('store-uuids', 'data'),
     Input('store-excluded-uuids', 'data'),
     Input('store-trips', 'data'),
-    Input('store-demographics', 'data'),
+    Input('store-surveys', 'data'),
     Input('store-trajectories', 'data'),
     Input('date-picker', 'start_date'),
     Input('date-picker', 'end_date'),
     Input('date-picker-timezone', 'value'),
     Input('keylist-switch', 'value'),  # Add keylist-switch to trigger data refresh on change
 )
-def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_demographics, store_trajectories, start_date, end_date, timezone, key_list):
+def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_surveys, store_trajectories, start_date, end_date, timezone, key_list):
     with ect.Timer() as total_timer:
         # Stage 1: Update selected tab
         selected_tab = tab
@@ -157,7 +159,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
         content = None
 
         # Handle the UUIDs tab without fullscreen loading spinner
-        if tab == 'tab-uuids-datatable':
+        if tab == 'tab-users-datatable':
             with ect.Timer() as handle_uuids_timer:
                 # Prepare the data to be displayed
                 columns = perm_utils.get_uuids_columns()  # Get the relevant columns
@@ -197,7 +199,6 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
                 data = store_trips.get("data", [])
                 columns = perm_utils.get_allowed_trip_columns()
-                columns.extend(store_trips.get("userinputcols", []))
                 has_perm = perm_utils.has_permission('data_trips')
 
                 df = pd.DataFrame(data)
@@ -217,10 +218,44 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                     df = df.drop(columns=[col for col in df.columns if col not in columns])
                     df = clean_location_data(df)
 
+                    trip_labels_enketo = perm_utils.config.get("survey_info", {}).get("trip-labels") == 'ENKETO'
+                    if trip_labels_enketo:
+                        def extract_response(x):
+                            docs = esj.wrapped_loads(x) \
+                                    .get('trip_user_input', {}) \
+                                    .get('data', {}) \
+                                    .get('jsonDocResponse', {})
+                            r = next(iter(docs.values()), {})
+                            # return response wtihout unneeded fields
+                            return {
+                                k: v for k, v in r.items()
+                                if k not in ['meta', 'attrid', 'start', 'end']
+                                and 'xmlns' not in k
+                            }
+                        response = df['data.user_input'].apply(extract_response)
+                        user_input_cols = pd.json_normalize(response)
+                    else:
+                        user_input_cols = pd.json_normalize(
+                            df['data.user_input'].apply(lambda x: esj.wrapped_loads(x) if x is not None else {})
+                        )
+                    user_input_cols.columns = [f"data.user_input.{col}" for col in user_input_cols.columns]
+                    df = pd.concat([df, user_input_cols], axis=1)
+
                     trips_table = populate_datatable(df, store_uuids, 'trips')
 
                     content = html.Div([
-                        html.Button('Display columns with raw units', id='button-clicked', n_clicks=0, style={'marginLeft': '5px'}),
+                        dmc.Checkbox(
+                            label="Include human-friendly units for distance and duration",
+                            id="humanize-units",
+                            checked=True,
+                            style={'margin-bottom': '12px'}
+                        ),
+                        dmc.Checkbox(
+                            label="Expand user_input to separate columns",
+                            id="expand-user-input",
+                            checked=False,
+                            style={'margin-bottom': '12px'}
+                        ),
                         trips_table
                     ])
             # Store timing after handling Trips tab
@@ -229,38 +264,29 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
                 handle_trips_timer
             )
 
-        # Handle Demographics tab
-        elif tab == 'tab-demographics-datatable':
-            with ect.Timer() as handle_demographics_timer:
-                data = store_demographics.get("data", {})
+        # Handle Surveys tab
+        elif tab == 'tab-surveys-datatable':
+            with ect.Timer() as handle_surveys_timer:
+                data = store_surveys.get("data", {})
                 has_perm = perm_utils.has_permission('data_demographics')
 
-                if len(data) == 1:
-                    # Here data is a dictionary
-                    data = list(data.values())[0]
-                    columns = list(data[0].keys()) if data else []
-                    df = pd.DataFrame(data)
-                    if df.empty:
-                        content = skeleton(500)
-                    else:
-                        content = populate_datatable(df, store_uuids, 'demographics')
-                elif len(data) > 1:
+                if len(data) >= 1:
                     if not has_perm:
                         content = skeleton(100)
                     else:
                         content = html.Div([
-                            dcc.Tabs(id='subtabs-demographics', value=list(data.keys())[0], children=[
+                            dcc.Tabs(id='subtabs-surveys', value=list(data.keys())[0], children=[
                                 dcc.Tab(label=key, value=key) for key in data
                             ]),
-                            html.Div(id='subtabs-demographics-content')
+                            html.Div(id='subtabs-surveys-content')
                         ])
                 else:
                     content = None
 
-            # Store timing after handling Demographics tab
+            # Store timing after handling surveys tab
             esdsq.store_dashboard_time(
-                "admin/data/render_content/handle_demographics_tab",
-                handle_demographics_timer
+                "admin/data/render_content/handle_surveys_tab",
+                handle_surveys_timer
             )
 
         # Handle Trajectories tab
@@ -314,21 +340,21 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_de
 
     return content
 
-# Handle subtabs for demographic table when there are multiple surveys
+# Handle subtabs for surveys tab when there are multiple surveys
 @callback(
-    Output('subtabs-demographics-content', 'children'),
-    Input('subtabs-demographics', 'value'),
-    Input('store-demographics', 'data'),
+    Output('subtabs-surveys-content', 'children'),
+    Input('subtabs-surveys', 'value'),
+    Input('store-surveys', 'data'),
     Input('store-uuids', 'data')
 )
-def update_sub_tab(tab, store_demographics, store_uuids):
+def update_sub_tab(tab, store_surveys, store_uuids):
     with ect.Timer() as total_timer:
 
         # Stage 1: Retrieve and process data for the selected subtab
         with ect.Timer() as stage1_timer:
-            data = store_demographics["data"]
-            if tab in data:
-                data = data[tab]
+            surveys_data = store_surveys["data"]
+            if tab in surveys_data:
+                data = surveys_data[tab]
                 if data:
                     columns = list(data[0].keys())
         esdsq.store_dashboard_time(
@@ -364,7 +390,7 @@ def update_sub_tab(tab, store_demographics, store_uuids):
 
         # Stage 4: Populate the datatable with the cleaned DataFrame
         with ect.Timer() as stage4_timer:
-            result = populate_datatable(df, store_uuids, 'demographics')
+            result = populate_datatable(df, store_uuids, 'surveys')
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/populate_datatable",
             stage4_timer
@@ -380,42 +406,23 @@ def update_sub_tab(tab, store_demographics, store_uuids):
 
 @callback(
     Output({'type': 'data_table', 'id': 'trips'}, 'columnDefs'),
-    Output('button-clicked', 'children'),  # Updates button label
-    Input('button-clicked', 'n_clicks'),  # Number of clicks on the button
+    Input('humanize-units', 'checked'),
+    Input('expand-user-input', 'checked'),
     State({'type': 'data_table', 'id': 'trips'}, 'columnDefs'),
 )
-# Controls visibility of columns in trips table and updates the label of button based on the number of clicks.
-def update_raw_vs_humanized_units(n_clicks, columnDefs):
-    with ect.Timer() as total_timer:
-        humanized_cols = ['data_duration', 'data_distance_miles', 'data_distance_km']
-        raw_cols = ['data_duration_seconds', 'data_distance_meters', 'data_distance']
-
-        # Stage 1: Determine hidden columns and button label based on number of clicks
-        with ect.Timer() as stage1_timer:
-            if n_clicks % 2 == 0:
-                columnDefs = [{**col, 'hide': True} if col['field'] in raw_cols
-                              else {**col, 'hide': False}
-                              for col in columnDefs]
-                button_label = 'Display columns with raw units'
-            else:
-                columnDefs = [{**col, 'hide': True} if col['field'] in humanized_cols
-                              else {**col, 'hide': False}
-                              for col in columnDefs]
-                button_label = 'Display columns with humanized units'
-        esdsq.store_dashboard_time(
-            "admin/data/update_dropdowns_trips/determine_hidden_columns_and_label",
-            stage1_timer
-        )
-
-    # Store the total time for the entire function
-    esdsq.store_dashboard_time(
-        "admin/data/update_dropdowns_trips/total_time",
-        total_timer
-    )
-
-    # Return the list of hidden columns and the updated button label
-    return columnDefs, button_label
-
+def hide_cols(humanize, expand_user_input, columnDefs):
+    humanized_cols = ['data:duration_humanized', 'data:distance_miles', 'data:distance_km']
+    newColumnDefs = []
+    for col in columnDefs:
+        if col['field'] in humanized_cols:
+            col['hide'] = not humanize
+        elif col['field'] == 'data:user_input':
+            col['hide'] = expand_user_input
+        elif col['field'].startswith('data:user_input:'):
+            col['hide'] = not expand_user_input
+            col['headerName'] = col['headerName'].replace('user_input:', '')
+        newColumnDefs.append(col)
+    return newColumnDefs
 
 def populate_datatable(df, store_uuids, table_id):
     with ect.Timer() as total_timer:
@@ -440,14 +447,14 @@ def populate_datatable(df, store_uuids, table_id):
                 )
         # Stage 2: Create the DataTable from the DataFrame
         with ect.Timer() as stage2_timer:
-            # Ag Grid does not allow . in column names; replace with _
+            # Ag Grid does not allow . in column names; replace with :
             # before creating the DataTable
-            df.columns = [col.replace('.', '_') for col in df.columns]
+            df.columns = [col.replace('.', ':') for col in df.columns]
             result = html.Div([
               dag.AgGrid(
                 id={'type': 'data_table', 'id': table_id},
                 rowData=df.to_dict('records'),
-                columnDefs=[{"field": i, "headerName": i} for i in df.columns],
+                columnDefs=[{"field": i, "headerName": i.replace('data:', '')} for i in df.columns],
                 defaultColDef={ "sortable": True, "filter": True },
                 columnSize="autoSize",
                 dashGridOptions={
@@ -460,9 +467,11 @@ def populate_datatable(df, store_uuids, table_id):
                     "height": "600px",
                 },
               ),
-              html.Button(
-                  "Download CSV",
+              dmc.Button(
+                  "Download as CSV",
                   id={"type": "download-csv-btn", "id": table_id},
+                  variant='outline',
+                  style={'margin-block': '8px'},
               ),
             ])
         esdsq.store_dashboard_time(
@@ -486,5 +495,18 @@ def populate_datatable(df, store_uuids, table_id):
 def export_table_as_csv(n_clicks):
     if not n_clicks:
         raise PreventUpdate
-    return True, {"fileName": "tokens-table.csv"}, 0
+    fname = f"openpath-data-{arrow.now().isoformat()}.csv"
+    return True, {"fileName": fname}, 0
 
+
+@callback(
+    Output({"type": "download-csv-btn", "id": MATCH}, "children"),
+    Input({"type": "data_table", "id": MATCH}, "rowData"),
+)
+def update_n_rows_download(row_data):
+    if row_data is None:
+        raise PreventUpdate
+    return html.Span([
+        html.I(className="fa fa-download mx-2"),
+        f"Download {len(row_data)} Rows as CSV"
+    ])
