@@ -22,6 +22,7 @@ import emission.storage.decorations.stats_queries as esdsq
 import emission.storage.json_wrappers as esj
 from utils.ux_utils import skeleton
 from utils.datetime_utils import ts_to_iso
+import json 
 register_page(__name__, path="/data")
 
 intro = """## Data"""
@@ -35,8 +36,9 @@ layout = html.Div(
             dcc.Tab(label='Surveys', value='tab-surveys-datatable'),
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
+    
         html.Div(id='tabs-content', style={'margin': '12px '}),
-        dcc.Store(id='selected-tab', data='tab-users-datatable'),  # Store to hold selected tab
+        dcc.Store(id='selected-tab', data='tab-users-datatable'), # Store to hold selected tab
         dcc.Store(id='loaded-uuids-stats', data=[]),
         dcc.Store(id='all-uuids-stats-loaded', data=False),
         # RadioItems for key list switch, wrapped in a div that can hide/show
@@ -50,15 +52,14 @@ layout = html.Div(
                         {'label': 'Analysis/Recreated Location', 'value': 'analysis/recreated_location'},
                         {'label': 'Background/Location', 'value': 'background/location'}
                     ],
-                    value='analysis/recreated_location',  # Default value
+                    value='analysis/recreated_location', # Default value
                     labelStyle={'display': 'inline-block', 'margin-right': '10px'}
                 ),
             ],
-            style={'display': 'none'}  # Initially hidden, will show only for the "Trajectories" tab
+            style={'display': 'none'}
         ),
     ]
 )
-
 
 def clean_location_data(df):
     with ect.Timer() as total_timer:
@@ -88,7 +89,7 @@ def clean_location_data(df):
 
     return df
 
-def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids, key_list):
+def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids: dict, key_list: str):
     with ect.Timer() as total_timer:
 
         # Stage 1: Query trajectories
@@ -101,7 +102,7 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
 
         # Stage 2: Filter records based on user exclusion
         with ect.Timer() as stage2_timer:
-            records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
+            records = df_to_filtered_records(df, 'user_id', excluded_uuids.get("data", [])) # Added a safe get method to prevent KeyError
         esdsq.store_dashboard_time(
             "admin/data/update_store_trajectories/filter_records",
             stage2_timer
@@ -125,7 +126,6 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
 
     return store
 
-
 @callback(
     Output('keylist-switch-container', 'style'),
     Input('tabs-datatable', 'value'),
@@ -133,8 +133,7 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
 def show_keylist_switch(tab):
     if tab == 'tab-trajectories-datatable':
         return {'display': 'block'} 
-    return {'display': 'none'}  # Hide the keylist-switch on all other tabs
-
+    return {'display': 'none'} # Hide the keylist-switch on all other tabs
 
 @callback(
     Output('tabs-content', 'children'),
@@ -162,8 +161,8 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
         if tab == 'tab-users-datatable':
             with ect.Timer() as handle_uuids_timer:
                 # Prepare the data to be displayed
-                columns = perm_utils.get_uuids_columns()  # Get the relevant columns
-                users_df = pd.DataFrame(store_uuids['data'])
+                columns = perm_utils.get_uuids_columns() # Get the relevant columns
+                users_df = pd.DataFrame(store_uuids.get('data', [])) # Safe get method to prevent KeyError
 
                 if users_df.empty or not perm_utils.has_permission('data_uuids'):
                     logging.debug(f"Callback - {selected_tab} insufficient permission.")
@@ -204,9 +203,10 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
                 df = pd.DataFrame(data)
                 if df.empty and has_perm:
                     logging.debug(f"Callback - {selected_tab} loaded_trips is empty.")
-                    content = html.Div(
+                    # Restoration of the correct empty state for the Trips tab
+                    content = html.Div( 
                         [
-                            html.Div("No data available", style={'text-align': 'center', 'margin-bottom': '16px'}),
+                            html.Div("No data available", style={'text-align': 'center', 'margin-bottom': '16px'}), 
                         ],
                         style={'margin-top': '36px'}
                     )
@@ -436,7 +436,7 @@ def populate_datatable(df, store_uuids, table_id):
             stage1_timer
         )
         if 'user_token' not in df.columns:
-            uuids_df = pd.DataFrame(store_uuids['data'])
+            uuids_df = pd.DataFrame(store_uuids.get('data', [])) # safe get method to prevent KeyError
             user_id_col = 'data.user_id' if 'data.user_id' in df.columns else 'user_id'
             if user_id_col in df.columns:
                 user_id_token_map = uuids_df.set_index('user_id')['user_token'].to_dict()
@@ -450,10 +450,13 @@ def populate_datatable(df, store_uuids, table_id):
             # Ag Grid does not allow . in column names; replace with :
             # before creating the DataTable
             df.columns = [col.replace('.', ':') for col in df.columns]
+            
+            import json # Bring in the JSON library for strict data scrubbing
+            clean_records = json.loads(df.to_json(orient='records', date_format='iso')) 
             result = html.Div([
               dag.AgGrid(
                 id={'type': 'data_table', 'id': table_id},
-                rowData=df.to_dict('records'),
+                rowData=clean_records, # load records into ag-grid
                 columnDefs=[{"field": i, "headerName": i.replace('data:', '')} for i in df.columns],
                 defaultColDef={ "sortable": True, "filter": True },
                 columnSize="autoSize",
@@ -462,7 +465,7 @@ def populate_datatable(df, store_uuids, table_id):
                     "paginationPageSize": 50,
                     "enableCellTextSelection": True,
                 },
-                style={
+                style={ 
                     "--ag-font-family": "monospace",
                     "height": "600px",
                 },
