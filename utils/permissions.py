@@ -5,6 +5,9 @@ from utils import constants
 import emission.analysis.configs.dynamic_config as eacd
 
 config = eacd.get_dynamic_config()
+if not config:
+    config = {} # This is the safety net
+
 surveyinfo = config.get("survey_info",
     {
       "surveys": {
