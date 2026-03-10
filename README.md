@@ -27,13 +27,13 @@ This setting tests that configuration using an embedded reverse proxy in the doc
 
 ## Set Variables
 
-### CONFIG_PATH
+### CONFIGS_URL
 
-The `CONFIG_PATH` environment variable is used to specify the location of the configuration files that are required for
+The `CONFIGS_URL` environment variable is used to specify the location of the configuration files that are required for
 a Docker container to run properly. This means that the Docker container will attempt to download the configuration
 files from the specified URL. The current path to the raw format of nrel configs is:
 
-https://raw.githubusercontent.com/e-mission/nrel-openpath-deploy-configs/main/configs/
+https://raw.githubusercontent.com/e-mission/op-deployment-configs/main/configs/
 
 
 ### STUDY_CONFIG
