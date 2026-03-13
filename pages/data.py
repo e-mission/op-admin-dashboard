@@ -11,7 +11,9 @@ import arrow
 import logging
 import pandas as pd
 from dash.exceptions import PreventUpdate
-
+import plotly.express as px # for the donut and bar charts
+import urllib.request # for fetching the survey from github
+import xml.dom.minidom as minidom # for organizing and parsing xml files
 from utils import constants
 from utils import permissions as perm_utils
 from utils import db_utils
@@ -22,6 +24,7 @@ import emission.storage.decorations.stats_queries as esdsq
 import emission.storage.json_wrappers as esj
 from utils.ux_utils import skeleton
 from utils.datetime_utils import ts_to_iso
+import json 
 register_page(__name__, path="/data")
 
 intro = """## Data"""
@@ -35,8 +38,9 @@ layout = html.Div(
             dcc.Tab(label='Surveys', value='tab-surveys-datatable'),
             dcc.Tab(label='Trajectories', value='tab-trajectories-datatable'),
         ]),
+    
         html.Div(id='tabs-content', style={'margin': '12px '}),
-        dcc.Store(id='selected-tab', data='tab-users-datatable'),  # Store to hold selected tab
+        dcc.Store(id='selected-tab', data='tab-users-datatable'), # Store to hold selected tab
         dcc.Store(id='loaded-uuids-stats', data=[]),
         dcc.Store(id='all-uuids-stats-loaded', data=False),
         # RadioItems for key list switch, wrapped in a div that can hide/show
@@ -50,15 +54,14 @@ layout = html.Div(
                         {'label': 'Analysis/Recreated Location', 'value': 'analysis/recreated_location'},
                         {'label': 'Background/Location', 'value': 'background/location'}
                     ],
-                    value='analysis/recreated_location',  # Default value
+                    value='analysis/recreated_location', # Default value
                     labelStyle={'display': 'inline-block', 'margin-right': '10px'}
                 ),
             ],
-            style={'display': 'none'}  # Initially hidden, will show only for the "Trajectories" tab
+            style={'display': 'none'}
         ),
     ]
 )
-
 
 def clean_location_data(df):
     with ect.Timer() as total_timer:
@@ -88,7 +91,7 @@ def clean_location_data(df):
 
     return df
 
-def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids, key_list):
+def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_uuids: dict, key_list: str):
     with ect.Timer() as total_timer:
 
         # Stage 1: Query trajectories
@@ -101,7 +104,7 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
 
         # Stage 2: Filter records based on user exclusion
         with ect.Timer() as stage2_timer:
-            records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
+            records = df_to_filtered_records(df, 'user_id', excluded_uuids.get("data", [])) # Added a safe get method to prevent KeyError
         esdsq.store_dashboard_time(
             "admin/data/update_store_trajectories/filter_records",
             stage2_timer
@@ -125,7 +128,6 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
 
     return store
 
-
 @callback(
     Output('keylist-switch-container', 'style'),
     Input('tabs-datatable', 'value'),
@@ -133,8 +135,7 @@ def update_store_trajectories(start_date: str, end_date: str, tz: str, excluded_
 def show_keylist_switch(tab):
     if tab == 'tab-trajectories-datatable':
         return {'display': 'block'} 
-    return {'display': 'none'}  # Hide the keylist-switch on all other tabs
-
+    return {'display': 'none'} # Hide the keylist-switch on all other tabs
 
 @callback(
     Output('tabs-content', 'children'),
@@ -162,8 +163,8 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
         if tab == 'tab-users-datatable':
             with ect.Timer() as handle_uuids_timer:
                 # Prepare the data to be displayed
-                columns = perm_utils.get_uuids_columns()  # Get the relevant columns
-                users_df = pd.DataFrame(store_uuids['data'])
+                columns = perm_utils.get_uuids_columns() # Get the relevant columns
+                users_df = pd.DataFrame(store_uuids.get('data', [])) # Safe get method to prevent KeyError
 
                 if users_df.empty or not perm_utils.has_permission('data_uuids'):
                     logging.debug(f"Callback - {selected_tab} insufficient permission.")
@@ -204,9 +205,10 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
                 df = pd.DataFrame(data)
                 if df.empty and has_perm:
                     logging.debug(f"Callback - {selected_tab} loaded_trips is empty.")
-                    content = html.Div(
+                    
+                    content = html.Div( 
                         [
-                            html.Div("No data available", style={'text-align': 'center', 'margin-bottom': '16px'}),
+                            html.Div("No data available", style={'text-align': 'center', 'margin-bottom': '16px'}), 
                         ],
                         style={'margin-top': '36px'}
                     )
@@ -274,10 +276,30 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
                     if not has_perm:
                         content = skeleton(100)
                     else:
+                        # Map the raw backend keys to the specific dfc-fermata survey names so they are fetched properly
+                        surveys_config = perm_utils.surveyinfo.get("surveys", {})
+                        survey_label_map = {key: surveys_config.get(key, {}).get("label", key) for key in data.keys()}
+                        
                         content = html.Div([
                             dcc.Tabs(id='subtabs-surveys', value=list(data.keys())[0], children=[
-                                dcc.Tab(label=key, value=key) for key in data
+                                # Apply the dictionary to set a clean label, keeping the original key as the underlying value
+                                dcc.Tab(label=survey_label_map.get(key, key), value=key) for key in data
                             ]),
+                            html.Div( 
+                                id='chart-toggle-container', 
+                                children=[ 
+                                    html.Label("Chart Type", style={'margin-right': '10px', 'font-weight': 'bold'}), 
+                                    dmc.SegmentedControl( 
+                                        id="chart-type-toggle", 
+                                        value="donut", 
+                                        data=[ 
+                                            {"value": "donut", "label": "Donut Charts"}, 
+                                            {"value": "bar", "label": "Bar Charts"}, 
+                                        ],
+                                    ), 
+                                ],
+                                style={'margin': '12px 0', 'display': 'flex', 'align-items': 'center', 'justify-content': 'center'}
+                            ), 
                             html.Div(id='subtabs-surveys-content')
                         ])
                 else:
@@ -340,23 +362,272 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
 
     return content
 
+def build_survey_dictionaries(survey_name: str):
+    try:
+        import json
+        # Primary path 
+        surveys_config = perm_utils.surveyinfo.get("surveys", {})
+        form_path = surveys_config.get(survey_name, {}).get("formPath")
+
+        if not form_path: 
+            return {}, {}, [], []
+
+        # Fetch the XML using the URL provided by the config
+        result = urllib.request.urlopen(form_path)
+        
+        doc = minidom.parse(result)
+        
+        # Build the itext translation map
+        itext_map = {}
+        for text_node in doc.getElementsByTagName("text"):
+            text_id = text_node.getAttribute("id")
+            v_nodes = text_node.getElementsByTagName("value")
+            if v_nodes and v_nodes[0].firstChild:
+                itext_map[text_id] = v_nodes[0].firstChild.data
+
+        option_dict, question_dict = {}, {}
+        categorical_fields, multi_select_fields = [], []
+
+        # Logic for translating raw data values (like 1, 2, 3) to human labels
+        for item in doc.getElementsByTagName("item"): 
+            val_nodes = item.getElementsByTagName("value")
+            lab_nodes = item.getElementsByTagName("label")
+            if val_nodes and lab_nodes and val_nodes[0].firstChild: # Safety check for empty values
+                raw_val = val_nodes[0].firstChild.data
+                l_ref = lab_nodes[0].getAttribute("ref")
+                if l_ref and "jr:itext" in l_ref: # Check if it uses a translation reference
+                    clean_id = l_ref.replace("jr:itext('", "").replace("')", "")
+                    option_dict[raw_val] = itext_map.get(clean_id, raw_val)
+                elif lab_nodes[0].firstChild: # Fallback to pull direct text from the label
+                    option_dict[raw_val] = lab_nodes[0].firstChild.data.strip()
+
+        # Logic for identifying and labeling questions
+        for tag in ['input', 'select', 'select1']:
+            for node in doc.getElementsByTagName(tag):
+                ref = node.getAttribute("ref")
+                if ref:
+                    short_id = ref.split('/')[-1]
+                    if tag in ['select', 'select1']:
+                        categorical_fields.append(short_id)
+                    if tag == 'select':
+                        multi_select_fields.append(short_id)
+                    
+                    lab_node = node.getElementsByTagName("label")
+                    if lab_node:
+                        l_ref = lab_node[0].getAttribute("ref")
+                        if l_ref and "jr:itext" in l_ref: # Check if it uses a translation reference
+                            clean_id = l_ref.replace("jr:itext('", "").replace("')", "")
+                            question_dict[short_id] = itext_map.get(clean_id, short_id)
+                        elif lab_node[0].firstChild: #  Fallback to pull direct text from the label
+                            question_dict[short_id] = lab_node[0].firstChild.data.strip()
+
+        return question_dict, option_dict, categorical_fields, multi_select_fields
+    except Exception as e:
+        logging.error(f'Error parsing survey XML for {survey_name}: {e}') 
+    return {}, {}, [], []
+
+def populate_survey_charts(df: pd.DataFrame, question_map: dict, option_map: dict, categorical_fields: list, multi_select_fields: list, chart_type: str = 'donut'): 
+    viz_charts = []
+    
+  
+    def format_label(val):
+        val_str = str(val) # Convert value to string for consistent checking
+        label = option_map.get(val, option_map.get(val_str, val))
+        if val_str.isdigit(): # Only apply the Likert formatting if the raw value is a number
+            if str(label) == val_str or label == "-":
+                return val_str
+            return f"{val_str} ({label})"
+        return str(label) # For all text based questions just return the clean human readable label
+
+    # filter metadata
+    # Splits the dot notation to match the XML keys
+    survey_cols = [c for c in df.columns if c in categorical_fields or str(c).split('.')[-1] in categorical_fields] 
+    
+    for col in survey_cols:
+        # map internal ids to human text
+        clean_col = str(col).split('.')[-1] # Extract the exact question ID 
+        display_question = question_map.get(clean_col, clean_col.replace('_', ' ')) 
+        question_type_label = "" 
+        
+        # skip open-ended text fields
+        if any(x in clean_col.lower() for x in ["other", "explain"]): 
+            continue
+
+        if clean_col in multi_select_fields: 
+            question_type_label = "Multi-select" # Tag the multiple choice fields
+            if chart_type == 'donut': 
+                continue 
+            total_respondents = len(df[col].dropna())
+            # Splitting multi-select strings so each choice is counted individually
+            counts = df[col].dropna().astype(str).str.split().explode().value_counts().reset_index()
+            counts.columns = ['response', 'count']
+            
+            if counts.empty:
+                continue
+            
+           
+            counts['response'] = counts['response'].apply(lambda x: option_map.get(x, option_map.get(str(x), x))) 
+                
+            counts['percent'] = (counts['count'] / total_respondents) * 100
+            counts = counts.sort_values('percent', ascending=True)
+            
+            multi_select_colors = ["#B71C1C", "#E65100", "#FF9800", "#FBC02D", "#FFF176"] 
+        
+            fig = px.bar(counts, y='response', x='percent', orientation='h', color=counts['response'].astype(str), color_discrete_sequence=multi_select_colors) 
+            fig.update_traces(
+                texttemplate='%{x:.0f}%',
+                textposition='outside',
+                cliponaxis=False
+              
+            )
+            fig.update_layout(
+                xaxis_title=None,
+                yaxis_title=None,
+                showlegend=True, 
+                legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5), # Push the legend cleanly to the bottom
+                plot_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+                yaxis=dict(showticklabels=False, showgrid=False, zeroline=False, type='category') # Hide the repetitive y axis labels 
+            )
+                
+        else:
+            # Counts single-choice questions to keep the visualization focused 
+            counts = df[col].value_counts().reset_index()
+            counts.columns = ['response', 'count']
+            
+            if counts.empty:
+                continue
+            
+            counts = counts.sort_values(by='response', ascending=True) # Sort by the raw numerical value for proper Likert order
+
+            is_likert = counts['response'].astype(str).str.isdigit().all() # Identify if every response is a number to confirm it is a Likert scale
+            
+            if is_likert and chart_type == 'donut': # Loop skips rendering this chart if it is a Likert scale in donut mode
+                continue
+                
+            question_type_label = "Likert" if is_likert else "Single-select" # Tag the question properly based on the math check
+
+            counts['response'] = counts['response'].apply(format_label) 
+            ordered_labels = counts['response'].tolist() #  Extract the exact text order to force the graph hierarchy
+
+            likert_colors = ["#963737", "#e65858", "#e0e0e0", "#60c547", "#45824e"] 
+            single_select_colors = ["#EF667D", "#6C69FE", "#F7B299", "#607D8B", "#4A148C"] 
+            color_palette = likert_colors if is_likert else single_select_colors
+            legend_layout = dict(orientation="v", yanchor="auto", y=0.5, xanchor="left", x=1.02) if is_likert else dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5)
+
+            if chart_type == 'bar':
+                counts['group'] = "Study Total"
+                
+                if is_likert:
+                    # Map color to a pure numeric value to force the Plotly Colorbar to generate
+                    counts['numeric_val'] = counts['response'].str.extract(r'(\d+)', expand=False).astype(float)
+                    
+                    
+                    blocky_colorscale = [
+                        [0.0, likert_colors[0]], [0.2, likert_colors[0]],
+                        [0.2, likert_colors[1]], [0.4, likert_colors[1]],
+                        [0.4, likert_colors[2]], [0.6, likert_colors[2]],
+                        [0.6, likert_colors[3]], [0.8, likert_colors[3]],
+                        [0.8, likert_colors[4]], [1.0, likert_colors[4]]
+                    ]
+                    
+                    fig = px.bar(
+                        counts, 
+                        y='group', 
+                        x='count', 
+                        color='numeric_val', # Triggers the colorbar
+                        orientation='h', 
+                        text_auto='.1f',
+                        color_continuous_scale=blocky_colorscale,
+                        range_color=[0.5, 5.5] # Centers the 5 blocks 
+                    )
+                    
+                    # Dynamically fetch the text translations so the colorbar matches the data 
+                    tick_texts = [format_label(str(i)) for i in range(1, 6)]
+                    
+                    fig.update_layout(
+                        barmode='stack',
+                        barnorm='percent',
+                        xaxis_title="Percent (%)",
+                        yaxis_title=None,
+                        xaxis=dict(),
+                        showlegend=False, # Disable discrete legend
+                        coloraxis_colorbar=dict(
+                            title='',
+                            tickmode='array',
+                            tickvals=[1, 2, 3, 4, 5],
+                            ticktext=tick_texts,
+                            ticks='', 
+                            thickness=30 
+                        )
+                    )
+                else:
+                    fig = px.bar(
+                        counts, 
+                        y='group', 
+                        x='count', 
+                        color='response', 
+                        orientation='h', 
+                        text_auto='.1f',
+                        category_orders={"response": ordered_labels}, 
+                        color_discrete_sequence=color_palette 
+                    )
+                    fig.update_layout(
+                        barmode='stack',
+                        barnorm='percent',
+                        xaxis_title="Percent (%)",
+                        yaxis_title=None,
+                        xaxis=dict(), 
+                        showlegend=True,
+                        legend_title_text='', 
+                        legend=legend_layout 
+                    )
+            else:
+                fig = px.pie(
+                    counts, 
+                    values='count', 
+                    names='response', 
+                    hole=0.6,
+                    category_orders={"response": ordered_labels}, 
+                    color_discrete_sequence=color_palette 
+                )
+                fig.update_traces(sort=False) 
+                fig.update_layout(
+                    showlegend=True,
+                    legend_title_text='', 
+                    legend=legend_layout 
+                )
+
+        fig.update_layout(height=300, margin=dict(t=10, b=10, l=10, r=10))
+
+        viz_charts.append(html.Div([
+            html.Div([ 
+                html.Span(f"{display_question}"),
+                html.Br(),
+                html.Span(f"[{question_type_label}]", style={'font-size': '11px', 'color': '#888', 'font-weight': 'normal'}) 
+            ], style={'text-align': 'center', 'height': '60px', 'overflow-y': 'auto', 'font-size': '13px', 'font-weight': 'bold'}),
+            dcc.Graph(id={'type': 'survey-donut', 'index': col}, figure=fig, config={'displayModeBar': False})
+        ], style={'width': '31%', 'display': 'inline-block', 'padding': '5px', 'border': '1px solid #eee', 'margin': '1%'}))
+            
+    return viz_charts
 # Handle subtabs for surveys tab when there are multiple surveys
 @callback(
     Output('subtabs-surveys-content', 'children'),
     Input('subtabs-surveys', 'value'),
     Input('store-surveys', 'data'),
-    Input('store-uuids', 'data')
+    Input('store-uuids', 'data'),
+    Input('chart-type-toggle', 'value'), # toggle bar chart
 )
-def update_sub_tab(tab, store_surveys, store_uuids):
+def update_sub_tab(tab, store_surveys, store_uuids, chart_type):
     with ect.Timer() as total_timer:
-
         # Stage 1: Retrieve and process data for the selected subtab
         with ect.Timer() as stage1_timer:
             surveys_data = store_surveys["data"]
-            if tab in surveys_data:
-                data = surveys_data[tab]
-                if data:
-                    columns = list(data[0].keys())
+            if tab not in surveys_data or not surveys_data[tab]: return None
+            data = surveys_data[tab]
+            # Receive both categorical and multi-select lists from the dictionary builder
+            question_map, option_map, categorical_fields, multi_select_fields = build_survey_dictionaries(tab)
+        
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/retrieve_and_process_data",
             stage1_timer
@@ -364,45 +635,54 @@ def update_sub_tab(tab, store_surveys, store_uuids):
 
         # Stage 2: Convert data to DataFrame
         with ect.Timer() as stage2_timer:
-            df = pd.DataFrame(data)
+            df = pd.json_normalize(data) 
             if df.empty:
-                esdsq.store_dashboard_time(
-                    "admin/data/update_sub_tab/convert_to_dataframe",
-                    stage2_timer
-                )
-                esdsq.store_dashboard_time(
-                    "admin/data/update_sub_tab/total_time",
-                    total_timer
-                )
                 return None
+        
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/convert_to_dataframe",
             stage2_timer
         )
 
-        # Stage 3: Filter columns based on the allowed set
+        # Stage 3: Filter columns
         with ect.Timer() as stage3_timer:
-            df = df.drop(columns=[col for col in df.columns if col not in columns])
+            allowed = list(question_map.keys()) + ['_id', 'user_id', 'user_token', 'ts']
+            df = df[[c for c in df.columns if c in allowed or str(c).split('.')[-1] in allowed]] 
+
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/filter_columns",
             stage3_timer
         )
 
-        # Stage 4: Populate the datatable with the cleaned DataFrame
+        # Stage 4: Populate the datatable
         with ect.Timer() as stage4_timer:
-            result = populate_datatable(df, store_uuids, 'surveys')
+            table_result = populate_datatable(df, store_uuids, 'surveys')
+            
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/populate_datatable",
             stage4_timer
         )
 
-    # Store the total time for the entire function
-    esdsq.store_dashboard_time(
-        "admin/data/update_sub_tab/total_time",
-        total_timer
-    )
+        viz_charts = populate_survey_charts(df, question_map, option_map, categorical_fields, multi_select_fields, chart_type) 
+   
+    surveys_config = perm_utils.surveyinfo.get("surveys", {})
+    display_name = surveys_config.get(tab, {}).get("label", tab)
 
-    return result
+
+    return html.Div([
+        dmc.Accordion(children=[
+            dmc.AccordionItem([
+                dmc.AccordionControl(f"Survey Summary Dashboard: {display_name}"),
+                dmc.AccordionPanel([
+                    html.Div(viz_charts, style={'display': 'flex', 'flex-wrap': 'wrap', 'justify-content': 'center'})
+                ])
+            ], value="summary-panel")
+        ]),
+        html.Hr(style={'margin-top': '40px'}),
+        table_result 
+    ])
+
+
 
 @callback(
     Output({'type': 'data_table', 'id': 'trips'}, 'columnDefs'),
@@ -436,7 +716,7 @@ def populate_datatable(df, store_uuids, table_id):
             stage1_timer
         )
         if 'user_token' not in df.columns:
-            uuids_df = pd.DataFrame(store_uuids['data'])
+            uuids_df = pd.DataFrame(store_uuids.get('data', [])) # safe get method to prevent KeyError
             user_id_col = 'data.user_id' if 'data.user_id' in df.columns else 'user_id'
             if user_id_col in df.columns:
                 user_id_token_map = uuids_df.set_index('user_id')['user_token'].to_dict()
@@ -450,10 +730,13 @@ def populate_datatable(df, store_uuids, table_id):
             # Ag Grid does not allow . in column names; replace with :
             # before creating the DataTable
             df.columns = [col.replace('.', ':') for col in df.columns]
+            
+            import json 
+            clean_records = json.loads(df.to_json(orient='records', date_format='iso')) 
             result = html.Div([
               dag.AgGrid(
                 id={'type': 'data_table', 'id': table_id},
-                rowData=df.to_dict('records'),
+                rowData=clean_records, # load records into ag-grid
                 columnDefs=[{"field": i, "headerName": i.replace('data:', '')} for i in df.columns],
                 defaultColDef={ "sortable": True, "filter": True },
                 columnSize="autoSize",
@@ -462,7 +745,7 @@ def populate_datatable(df, store_uuids, table_id):
                     "paginationPageSize": 50,
                     "enableCellTextSelection": True,
                 },
-                style={
+                style={ 
                     "--ag-font-family": "monospace",
                     "height": "600px",
                 },
