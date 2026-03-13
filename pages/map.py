@@ -24,8 +24,7 @@ import emission.analysis.configs.dynamic_config as eacd
 
 from utils.permissions import has_permission
 
-# Safety net: If the dynamic config fails to download, default to an empty dictionary
-config = eacd.get_dynamic_config() or {}
+config = eacd.get_dynamic_config()
 ble_enabled = config.get('vehicle_identities')
 
 

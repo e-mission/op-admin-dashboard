@@ -334,7 +334,7 @@ def update_store_surveys(start_date, end_date, timezone, excluded_uuids):
     dataframes = query_surveys(start_date, end_date, timezone)
     records = {}
     for key, df in dataframes.items():
-        records[key] = df_to_filtered_records(df, 'user_id', excluded_uuids.get("data", []))
+        records[key] = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
     store = {
         "data": records,
         "length": len(records),
@@ -353,7 +353,7 @@ def update_store_surveys(start_date, end_date, timezone, excluded_uuids):
 def update_store_trips(start_date, end_date, timezone, excluded_uuids):
     (start_date, end_date) = iso_to_date_only(start_date, end_date)
     df = query_confirmed_trips(start_date, end_date, timezone)
-    records = df_to_filtered_records(df, 'user_id', excluded_uuids.get("data", [])) # Added safe get method so the dashboard doesn't crash on load
+    records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
     # logging.debug("returning records %s" % records[0:2])
     store = {
         "data": records,
@@ -370,7 +370,7 @@ def update_store_trips(start_date, end_date, timezone, excluded_uuids):
 )
 def load_label_options(_):
     config = eacd.get_dynamic_config()
-    if config is None or 'label-options' not in config: #checks if config is None first to prevent the TypeError crash
+    if 'label-options' not in config:
         return asyncio.run(
             emcu.read_json_resource("label-options.default.json")
         )

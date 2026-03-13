@@ -205,7 +205,7 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
                 df = pd.DataFrame(data)
                 if df.empty and has_perm:
                     logging.debug(f"Callback - {selected_tab} loaded_trips is empty.")
-                    # Restoration of the correct empty state for the Trips tab
+                    
                     content = html.Div( 
                         [
                             html.Div("No data available", style={'text-align': 'center', 'margin-bottom': '16px'}), 
@@ -277,7 +277,8 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
                         content = skeleton(100)
                     else:
                         # Map the raw backend keys to the specific dfc-fermata survey names so they are fetched properly
-                        survey_label_map = {key: key.replace('Survey', '').replace('Dfc', 'dfc-').lower() for key in data.keys()}
+                        surveys_config = perm_utils.surveyinfo.get("surveys", {})
+                        survey_label_map = {key: surveys_config.get(key, {}).get("label", key) for key in data.keys()}
                         
                         content = html.Div([
                             dcc.Tabs(id='subtabs-surveys', value=list(data.keys())[0], children=[
@@ -363,23 +364,18 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
 
 def build_survey_dictionaries(survey_name: str):
     try:
-        # Dynamically fetching the archived config
-        config_url = "https://raw.githubusercontent.com/e-mission/op-deployment-configs/main/archived_configs/dfc-fermata.nrel-op.json"
-        
-        with urllib.request.urlopen(config_url) as response: 
-            config_data = json.loads(response.read().decode())
-            
-        # Extracting the formPath directly from the config JSON
-        surveys_config = config_data.get("survey_info", {}).get("surveys", {}) 
-        raw_form_path = surveys_config.get(survey_name, {}).get("formPath") 
-        if not raw_form_path: return {}, {}, [], []
-        
-        # Changing the outdated repo name from the archived JSON so the XML fetch doesn't 404
-        form_path = raw_form_path.replace("nrel-openpath-deploy-configs", "op-deployment-configs") 
-        if not form_path: return {}, {}, [], []
-        
+        import json
+        # Primary path 
+        surveys_config = perm_utils.surveyinfo.get("surveys", {})
+        form_path = surveys_config.get(survey_name, {}).get("formPath")
+
+        if not form_path: 
+            return {}, {}, [], []
+
+        # Fetch the XML using the URL provided by the config
         result = urllib.request.urlopen(form_path)
-        doc = minidom.parse(result) 
+        
+        doc = minidom.parse(result)
         
         # Build the itext translation map
         itext_map = {}
@@ -477,17 +473,17 @@ def populate_survey_charts(df: pd.DataFrame, question_map: dict, option_map: dic
             
             multi_select_colors = ["#B71C1C", "#E65100", "#FF9800", "#FBC02D", "#FFF176"] 
         
-            fig = px.bar(counts, y='response', x='percent', orientation='h', color=counts['response'].astype(str), color_discrete_sequence=multi_select_colors) # Applied the strict warm palette
+            fig = px.bar(counts, y='response', x='percent', orientation='h', color=counts['response'].astype(str), color_discrete_sequence=multi_select_colors) 
             fig.update_traces(
                 texttemplate='%{x:.0f}%',
                 textposition='outside',
                 cliponaxis=False
-                #  Removed showlegend=False so legend can actually render
+              
             )
             fig.update_layout(
                 xaxis_title=None,
                 yaxis_title=None,
-                showlegend=True, #  Fixed the layout typo that was crashing the application
+                showlegend=True, 
                 legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5), # Push the legend cleanly to the bottom
                 plot_bgcolor='rgba(0,0,0,0)',
                 xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
@@ -495,7 +491,7 @@ def populate_survey_charts(df: pd.DataFrame, question_map: dict, option_map: dic
             )
                 
         else:
-            # Standard counting for single-choice questions to keep the visualization focused 
+            # Counts single-choice questions to keep the visualization focused 
             counts = df[col].value_counts().reset_index()
             counts.columns = ['response', 'count']
             
@@ -506,12 +502,12 @@ def populate_survey_charts(df: pd.DataFrame, question_map: dict, option_map: dic
 
             is_likert = counts['response'].astype(str).str.isdigit().all() # Identify if every response is a number to confirm it is a Likert scale
             
-            if is_likert and chart_type == 'donut': #Force the loop to skip rendering this chart if it is a Likert scale in donut mode
+            if is_likert and chart_type == 'donut': # Loop skips rendering this chart if it is a Likert scale in donut mode
                 continue
                 
             question_type_label = "Likert" if is_likert else "Single-select" # Tag the question properly based on the math check
 
-            counts['response'] = counts['response'].apply(format_label) #  Apply our new strict formatting function
+            counts['response'] = counts['response'].apply(format_label) 
             ordered_labels = counts['response'].tolist() #  Extract the exact text order to force the graph hierarchy
 
             likert_colors = ["#963737", "#e65858", "#e0e0e0", "#60c547", "#45824e"] 
@@ -526,7 +522,7 @@ def populate_survey_charts(df: pd.DataFrame, question_map: dict, option_map: dic
                     # Map color to a pure numeric value to force the Plotly Colorbar to generate
                     counts['numeric_val'] = counts['response'].str.extract(r'(\d+)', expand=False).astype(float)
                     
-                    # Built a stepped 'blocky' colorscale so it acts like distinct blocks instead of a blurry gradient
+                    
                     blocky_colorscale = [
                         [0.0, likert_colors[0]], [0.2, likert_colors[0]],
                         [0.2, likert_colors[1]], [0.4, likert_colors[1]],
@@ -562,7 +558,7 @@ def populate_survey_charts(df: pd.DataFrame, question_map: dict, option_map: dic
                             tickvals=[1, 2, 3, 4, 5],
                             ticktext=tick_texts,
                             ticks='', 
-                            thickness=30 # Make it visually blocky like the requested UI
+                            thickness=30 
                         )
                     )
                 else:
@@ -608,7 +604,7 @@ def populate_survey_charts(df: pd.DataFrame, question_map: dict, option_map: dic
             html.Div([ 
                 html.Span(f"{display_question}"),
                 html.Br(),
-                html.Span(f"[{question_type_label}]", style={'font-size': '11px', 'color': '#888', 'font-weight': 'normal'}) # Injected the tiny tag right below the title
+                html.Span(f"[{question_type_label}]", style={'font-size': '11px', 'color': '#888', 'font-weight': 'normal'}) 
             ], style={'text-align': 'center', 'height': '60px', 'overflow-y': 'auto', 'font-size': '13px', 'font-weight': 'bold'}),
             dcc.Graph(id={'type': 'survey-donut', 'index': col}, figure=fig, config={'displayModeBar': False})
         ], style={'width': '31%', 'display': 'inline-block', 'padding': '5px', 'border': '1px solid #eee', 'margin': '1%'}))
@@ -623,17 +619,15 @@ def populate_survey_charts(df: pd.DataFrame, question_map: dict, option_map: dic
     Input('chart-type-toggle', 'value'), # toggle bar chart
 )
 def update_sub_tab(tab, store_surveys, store_uuids, chart_type):
-
-   
     with ect.Timer() as total_timer:
-
         # Stage 1: Retrieve and process data for the selected subtab
-        with ect.Timer() as stage1_timer: # records time to fetch data
+        with ect.Timer() as stage1_timer:
             surveys_data = store_surveys["data"]
             if tab not in surveys_data or not surveys_data[tab]: return None
             data = surveys_data[tab]
             # Receive both categorical and multi-select lists from the dictionary builder
             question_map, option_map, categorical_fields, multi_select_fields = build_survey_dictionaries(tab)
+        
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/retrieve_and_process_data",
             stage1_timer
@@ -641,28 +635,18 @@ def update_sub_tab(tab, store_surveys, store_uuids, chart_type):
 
         # Stage 2: Convert data to DataFrame
         with ect.Timer() as stage2_timer:
-            # Flatten the nested JSON so the database payload turns into columns 
             df = pd.json_normalize(data) 
             if df.empty:
-                esdsq.store_dashboard_time(
-                    "admin/data/update_sub_tab/convert_to_dataframe",
-                    stage2_timer
-                )
-                # Store the total time for the entire function
-                esdsq.store_dashboard_time(
-                    "admin/data/update_sub_tab/total_time",
-                    total_timer
-                )
                 return None
+        
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/convert_to_dataframe",
             stage2_timer
         )
 
-        # Stage 3: Filter columns based on the allowed set
+        # Stage 3: Filter columns
         with ect.Timer() as stage3_timer:
             allowed = list(question_map.keys()) + ['_id', 'user_id', 'user_token', 'ts']
-            # Split match the XML keys even if the database buries them in a sub-object 
             df = df[[c for c in df.columns if c in allowed or str(c).split('.')[-1] in allowed]] 
 
         esdsq.store_dashboard_time(
@@ -670,25 +654,25 @@ def update_sub_tab(tab, store_surveys, store_uuids, chart_type):
             stage3_timer
         )
 
-        # Stage 4: Populate the datatable with the cleaned DataFrame
+        # Stage 4: Populate the datatable
         with ect.Timer() as stage4_timer:
-            table_result = populate_datatable(df, store_uuids, 'surveys') # times the table generation and stores it to be displayed alongside the new charts
+            table_result = populate_datatable(df, store_uuids, 'surveys')
             
         esdsq.store_dashboard_time(
             "admin/data/update_sub_tab/populate_datatable",
             stage4_timer
         )
 
-        # pass categorical_fields to filter out text inputs like ZIP codes
         viz_charts = populate_survey_charts(df, question_map, option_map, categorical_fields, multi_select_fields, chart_type) 
+   
+    surveys_config = perm_utils.surveyinfo.get("surveys", {})
+    display_name = surveys_config.get(tab, {}).get("label", tab)
 
-    # Map the raw key to the clean survey name for the accordion title
-    display_name = tab.replace('Survey', '').replace('Dfc', 'dfc-').lower() # Grab the clean name
 
     return html.Div([
         dmc.Accordion(children=[
             dmc.AccordionItem([
-                dmc.AccordionControl(f"Survey Summary Dashboard: {display_name}"), # Replaced raw tab key with the clean display name
+                dmc.AccordionControl(f"Survey Summary Dashboard: {display_name}"),
                 dmc.AccordionPanel([
                     html.Div(viz_charts, style={'display': 'flex', 'flex-wrap': 'wrap', 'justify-content': 'center'})
                 ])
@@ -747,7 +731,7 @@ def populate_datatable(df, store_uuids, table_id):
             # before creating the DataTable
             df.columns = [col.replace('.', ':') for col in df.columns]
             
-            import json # Bring in the JSON library for strict data scrubbing
+            import json 
             clean_records = json.loads(df.to_json(orient='records', date_format='iso')) 
             result = html.Div([
               dag.AgGrid(
