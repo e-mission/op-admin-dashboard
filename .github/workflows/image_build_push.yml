@@ -2,7 +2,7 @@ name: docker-image-push-admin
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, '**__image_build_**' ]
 
   workflow_dispatch:
     inputs:
@@ -23,6 +23,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
 
     - name: Set docker image tag from .env file
       run: |
@@ -49,19 +55,35 @@ jobs:
     - name: build docker image
       run: |
         if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-          SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_WORKFLOW_DISPATCH docker compose -f docker-compose-prod.yml build
+          SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_WORKFLOW_DISPATCH docker buildx bake -f docker-compose-prod.yml \
+          --set *.platform=linux/amd64,linux/arm64 \
+          --set *.cache-to=type=gha
         else
-          SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_PUSH docker compose -f docker-compose-prod.yml build
+          SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_PUSH docker buildx bake -f docker-compose-prod.yml \
+          --set *.platform=linux/amd64,linux/arm64 \
+          --set *.cache-to=type=gha
         fi
         docker images
 
-    - name: rename docker image
+    - name: Create tag to store later
       run: |
-        docker image tag e-mission/opdash:0.0.1 $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }}
+        echo "OPADMIN_DASH_IMAGE_TAG=${{ steps.date.outputs.date }}" >> $GITHUB_ENV
 
     - name: push docker image
       run: |
-        docker push $DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }}
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_WORKFLOW_DISPATCH docker buildx bake -f docker-compose-prod.yml dashboard \
+          --set *.cache-from=type=gha \
+          --set *.platform=linux/amd64,linux/arm64 \
+          --set dashboard.tags=$DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} \
+          --push
+        else
+          SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_PUSH docker buildx bake -f docker-compose-prod.yml dashboard \
+          --set *.cache-from=type=gha \
+          --set *.platform=linux/amd64,linux/arm64 \
+          --set dashboard.tags=$DOCKER_USER/${GITHUB_REPOSITORY#*/}:${GITHUB_REF##*/}_${{ steps.date.outputs.date }} \
+          --push
+        fi
 
     - name: Update .env file 
       run: |
