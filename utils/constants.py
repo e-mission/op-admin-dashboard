@@ -39,6 +39,7 @@ BINARY_TRIP_COLS = [
 VALID_UUIDS_COLS = [
     'user_token',
     'user_id',
+    'username',
     'update_ts',
     'create_ts',
     'total_trips',
