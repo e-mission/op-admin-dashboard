@@ -74,10 +74,10 @@ layout = html.Div([
             dbc.Label('Minimum allowed config version'),
             dbc.Input(id='min-config-version',
                       type='number',
-                      value=config['version'],
+                      value=config.get('version', 1), # added .get() to provide a default value of 1
                       min=1,
-                      max=config['version']),
-            dbc.FormText(f'The latest config version is {config["version"]}'),
+                      max=config.get('version', 1)), # added .get() to prevent crash if version is missing
+            dbc.FormText(f'The latest config version is {config.get("version", "unknown")}'), # added .get() to show "unknown" instead of crashing
         ],
             id='config-update-options',
             style={'display': 'none'},
