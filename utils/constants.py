@@ -40,6 +40,7 @@ VALID_UUIDS_COLS = [
     'user_token',
     'user_id',
     'username',
+    'payment_hold_expires_ts',
     'update_ts',
     'create_ts',
     'total_trips',
