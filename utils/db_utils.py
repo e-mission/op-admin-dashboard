@@ -165,24 +165,39 @@ def query_confirmed_trips(start_date: str, end_date: str, tz: str):
                         else "INVALID"
                     )
                 )
-                df["data.primary_sensed_mode"] = df.cleaned_section_summary.apply(get_max_mode_from_summary)
-                df["data.primary_predicted_mode"] = df.inferred_section_summary.apply(get_max_mode_from_summary)
-                if 'ble_sensed_summary' in df.columns:
+                if "cleaned_section_summary" in df.columns:
+                    df["data.primary_sensed_mode"] = df.cleaned_section_summary.apply(get_max_mode_from_summary)
+                else:
+                    logging.warning("No cleaned section summary found, old style trips, ignoring...")
+                if "inferred_section_summary" in df.columns:
+                    df["data.primary_predicted_mode"] = df.inferred_section_summary.apply(get_max_mode_from_summary)
+                else:
+                    logging.warning("No inferred section summary found, old style trips, ignoring...")
+                if "ble_sensed_summary" in df.columns:
                     df["data.primary_ble_sensed_mode"] = df.ble_sensed_summary.apply(get_max_mode_from_summary)
                 else:
-                    logging.debug("No BLE support found, not fleet version, ignoring...")
+                    logging.warning("No BLE support found, not fleet version, ignoring...")
             esdsq.store_dashboard_time(
                 "admin/db_utils/query_confirmed_trips/process_coordinates_and_modes",
                 stage4_timer
             )
 
-            # Stage 5: Filter columns and stringify user_input
+            # Stage 5: Filter columns and stringify dict/list object values
             with ect.Timer() as stage5_timer:
                 allowed_cols = list(perm_utils.get_all_trip_columns())
+                missing_cols = [c for c in allowed_cols if c not in df.columns]
+                if missing_cols:
+                    logging.warning(
+                        "Configured trip columns not found in the loaded data: %s",
+                        sorted(set(missing_cols))
+                    )
                 df = df[[c for c in allowed_cols if c in df.columns]]
-                df['data.user_input'] = df['data.user_input'].apply(
-                    lambda x: esj.wrapped_dumps(x) if x is not None else '{}'
-                )
+                for col in df.select_dtypes(include=['object']).columns:
+                    df[col] = df[col].apply(
+                        lambda x: esj.wrapped_dumps(x)
+                        if isinstance(x, (dict, list, tuple))
+                        else x
+                    )
             esdsq.store_dashboard_time(
                 "admin/db_utils/query_confirmed_trips/expand_and_filter_user_inputs",
                 stage5_timer

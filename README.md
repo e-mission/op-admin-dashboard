@@ -98,6 +98,20 @@ that is displayed on the Data page.
 ### Dropdown Options
 - `options_uuids`: User can see the UUIDs of users in dropdowns and choose between them.
 - `options_emails`: User can see the emails of users in dropdowns and choose between them.
+
+### Example: Custom trip columns
+If you need to expose additional trip fields, use the same `data.` prefix as the built-in trip columns, for example:
+
+```python
+admin_dashboard = {
+    "additional_trip_columns": [
+        "data.user_input",
+        "data.notes"
+    ]
+}
+```
+
+Use the full column path, including the `data.` prefix, and ensure it matches the actual data field name. If a configured column is absent in the loaded trip data, the app will log a warning instead of silently changing it.
 <br><br><br>
 
 
