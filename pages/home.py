@@ -301,7 +301,7 @@ def generate_barplot(data, x, y, title):
 
         # Stage 2: Generate the bar plot if data is provided
         with ect.Timer() as stage2_timer:
-            if data is not None:
+            if data is not None and not data.empty:
                 fig = px.bar(data, x=x, y=y)
         esdsq.store_dashboard_time(
             "admin/home/generate_barplot/generate_barplot_with_data",
