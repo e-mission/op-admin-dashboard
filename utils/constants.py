@@ -26,6 +26,7 @@ VALID_TRIP_COLS = [
     "data.primary_predicted_mode",
     "data.primary_ble_sensed_mode",
     "data.user_input",
+    "data.inferred_labels"
 ]
 
 BINARY_TRIP_COLS = [
