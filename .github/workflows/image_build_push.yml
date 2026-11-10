@@ -22,13 +22,13 @@ jobs:
       DOCKER_TAG_FROM_WORKFLOW_DISPATCH: ${{ github.event.inputs.docker_image_tag }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
+      uses: docker/setup-qemu-action@v4
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@v4
 
     - name: Set docker image tag from .env file
       run: |
@@ -112,7 +112,7 @@ jobs:
           echo "Created tag text file"
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
           name: admin-dash-image-tag
           path: admin_dash_tag_file.txt
