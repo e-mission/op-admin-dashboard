@@ -1,0 +1,11 @@
+# dashboard-base is the image built from docker/Dockerfile, see additional_contexts in docker-compose.tests.yml
+FROM dashboard-base
+
+WORKDIR /usr/src/app
+COPY requirements-dev.txt dashboard_setup/
+RUN bash -c "source setup/activate.sh && pip install -r dashboard_setup/requirements-dev.txt"
+
+COPY ./tests ./tests
+COPY docker/start_tests.sh dashboard_setup/
+RUN chmod u+x dashboard_setup/start_tests.sh
+CMD ["/bin/bash", "/usr/src/app/dashboard_setup/start_tests.sh"]

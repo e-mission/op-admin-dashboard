@@ -1,0 +1,24 @@
+name: test-with-docker
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    # weekly, to catch breakage from base image or dependency updates
+    - cron: '5 4 * * 0'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # SERVER_IMAGE_TAG is read from .env by docker compose
+    - name: Build the test image
+      run: docker compose -f docker-compose.tests.yml build
+
+    - name: Run the tests
+      run: docker compose -f docker-compose.tests.yml run --rm dashboard-tests
