@@ -4,7 +4,7 @@ gunicorn==23.0.0
 plotly==5.24.1
 dash-bootstrap-components==1.4.1
 dash_extensions==0.1.13
-pylint==2.17.2
+pylint==4.0.9
 qrcode==7.4.2
 requests==2.31.0
 python-jose==3.4.0
