@@ -413,4 +413,4 @@ if __name__ == "__main__":
         SESSION_COOKIE_HTTPONLY=True
     )
     logging.debug("after override, current server config = %s" % server.config)
-    app.run_server(debug=envDebug, host='0.0.0.0', port=envPort)
+    app.run(debug=envDebug, host='0.0.0.0', port=envPort)

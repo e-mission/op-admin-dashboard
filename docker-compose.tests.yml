@@ -17,7 +17,14 @@ services:
     environment:
       DASH_DEBUG_MODE: "True"
       PYTHONPATH: /usr/src/app
+      DB_HOST: db
+      CONFIGS_URL: "https://raw.githubusercontent.com/e-mission/op-deployment-configs/main/configs/"
+      STUDY_CONFIG: "stage-program"
+    depends_on:
+      - db
     volumes:
       - ./pages:/usr/src/app/pages
       - ./utils:/usr/src/app/utils
       - ./tests:/usr/src/app/tests
+  db:
+    image: mongo:8.0.4
