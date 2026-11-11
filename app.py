@@ -256,4 +256,4 @@ def updateModal(load, map, chart, close, dataState):
 if __name__ == '__main__':
     envPort = int(os.getenv('SERVER_PORT', '8050'))
     envDebug = os.getenv('DASH_DEBUG_MODE', 'True').lower() == 'true'
-    app.run_server(debug=envDebug, host='0.0.0.0', port=envPort)  # Set debug to False to remove that big blue dot
+    app.run(debug=envDebug, host='0.0.0.0', port=envPort)  # Set debug to False to remove that big blue dot
