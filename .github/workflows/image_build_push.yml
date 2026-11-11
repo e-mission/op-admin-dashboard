@@ -5,10 +5,6 @@ on:
     branches: [ master, '**__image_build_**' ]
 
   workflow_dispatch:
-    inputs:
-      docker_image_tag:
-        description: "Latest Docker image tags passed from e-mission-server repository on image build and push"
-        required: true
 
 env:
   DOCKER_USER: ${{secrets.DOCKER_USER}}
@@ -17,9 +13,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    env:
-      DOCKER_TAG_FROM_WORKFLOW_DISPATCH: ${{ github.event.inputs.docker_image_tag }}
 
     steps:
     - uses: actions/checkout@v7
@@ -30,16 +23,24 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
 
-    - name: Set docker image tag from .env file
+    - name: Fetch server image tag
+      id: get-server-tag
+      run: |
+        response=$(curl -s https://raw.githubusercontent.com/e-mission/e-mission-server/refs/heads/master/.env)
+        SERVER_IMAGE_TAG=$(echo "$response" | grep "SERVER_IMAGE_TAG=" | cut -d'=' -f2)
+        echo "SERVER_IMAGE_TAG=$SERVER_IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+    - name: Set docker image tags
+      id: set-tags
       run: |
         set -a; source .env; set +a
-        echo "DOCKER_TAG_FROM_PUSH=${SERVER_IMAGE_TAG}" >> $GITHUB_ENV
+        echo "ADMIN_DASH_IMAGE_TAG=${ADMIN_DASH_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
-    - name: Print input docker image tag
+    - name: Print input docker image tags
       run: |
         echo "Event name: ${{ github.event_name }}"
-        echo "Latest docker image tag (push): ${{ env.DOCKER_TAG_FROM_PUSH }}"
-        echo "Latest docker image tag (workflow_dispatch): ${{ env.DOCKER_TAG_FROM_WORKFLOW_DISPATCH }}"
+        echo "Current admin-dash image tag (push): ${{ steps.set-tags.outputs.ADMIN_DASH_IMAGE_TAG }}"
+        echo "Latest server image tag (${{ github.event_name }}): ${{ steps.get-server-tag.outputs.SERVER_IMAGE_TAG }}"
 
     - name: docker login
       run: | # log into docker hub account
@@ -47,22 +48,16 @@ jobs:
 
     - name: Get current date # get the date of the build
       id: date
-      run: echo "::set-output name=date::$(date +'%Y-%m-%d--%M-%S')"
+      run: echo "date=$(date +'%Y-%m-%d--%M-%S')" >> "$GITHUB_OUTPUT"
 
     - name: Run a one-line script
       run: echo running in repo ${GITHUB_REPOSITORY#*/} branch ${GITHUB_REF##*/} on ${{ steps.date.outputs.date }}
 
     - name: build docker image
       run: |
-        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-          SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_WORKFLOW_DISPATCH docker buildx bake -f docker-compose-prod.yml \
+        SERVER_IMAGE_TAG=${{ steps.set-tags.outputs.SERVER_IMAGE_TAG }} docker buildx bake -f docker-compose-prod.yml \
           --set *.platform=linux/amd64,linux/arm64 \
           --set *.cache-to=type=gha
-        else
-          SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_PUSH docker buildx bake -f docker-compose-prod.yml \
-          --set *.platform=linux/amd64,linux/arm64 \
-          --set *.cache-to=type=gha
-        fi
         docker images
 
     - name: Create tag to store later
@@ -87,13 +82,9 @@ jobs:
 
     - name: Update .env file 
       run: |
-        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-          echo "Workflow_dispatch: New server image built and pushed, Updating image tag in .env"
-          echo "SERVER_IMAGE_TAG=$DOCKER_TAG_FROM_WORKFLOW_DISPATCH" > .env
-        else
-          echo "Push event: Restoring latest server image tag from .env"
-        fi
-  
+        echo "ADMIN_DASH_IMAGE_TAG=${GITHUB_REF##*/}_${{ steps.date.outputs.date }}" > .env
+        echo "SERVER_IMAGE_TAG=${{ steps.get-server-tag.outputs.SERVER_IMAGE_TAG }}" >> .env
+
     - name: Add, Commit, Push changes to .env file
       run: |
         git config --local user.email "action@github.com"
@@ -102,19 +93,6 @@ jobs:
           echo "Latest timestamp already present in .env file, no changes to commit"
         else
           git add .env
-          git commit -m "Updated docker image tag in .env file to the latest timestamp"
+          git commit -m "Updated docker image tags in .env file to the latest timestamp"
           git push origin 
         fi
-
-    - name: Create artifact text file
-      run: |
-          echo ${{ steps.date.outputs.date }} > admin_dash_tag_file.txt
-          echo "Created tag text file"
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v7
-      with:
-          name: admin-dash-image-tag
-          path: admin_dash_tag_file.txt
-          overwrite: true
-  
