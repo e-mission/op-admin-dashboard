@@ -12,9 +12,19 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
 
     steps:
     - uses: actions/checkout@v7
+
+    - name: Log in to GitHub Container Registry
+      env:
+        GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        echo "$GHCR_TOKEN" |
+          docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
     # SERVER_IMAGE_TAG is read from .env by docker compose
     - name: Build the test image
