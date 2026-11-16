@@ -1,6 +1,7 @@
 ARG SERVER_IMAGE_TAG
 
-FROM shankari/e-mission-server:${SERVER_IMAGE_TAG}
+FROM ghcr.io/e-mission/e-mission-server:${SERVER_IMAGE_TAG}
+LABEL org.opencontainers.image.source=https://github.com/e-mission/op-admin-dashboard
 
 ENV DASH_DEBUG_MODE True
 ENV SERVER_PORT 8050
