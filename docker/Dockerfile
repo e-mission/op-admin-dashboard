@@ -1,4 +1,4 @@
-FROM ghcr.io/e-mission/e-mission-server:v4.0.1
+FROM ghcr.io/e-mission/e-mission-server:v4.0.2
 LABEL org.opencontainers.image.source=https://github.com/e-mission/op-admin-dashboard
 
 ENV DASH_DEBUG_MODE True
