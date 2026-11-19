@@ -1,5 +1,6 @@
 # Dockerized Dash App Template
 
+[![Docker tests on pushes to master](https://github.com/e-mission/op-admin-dashboard/actions/workflows/test_with_docker.yml/badge.svg?branch=master&event=push)](https://github.com/e-mission/op-admin-dashboard/actions/workflows/test_with_docker.yml?query=branch%3Amaster+event%3Apush)
 
 https://towardsdatascience.com/dockerize-your-dash-app-1e155dd1cea3
 
