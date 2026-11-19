@@ -3,14 +3,14 @@ updates:
   - package-ecosystem: "docker"
     directory: "/docker"
     schedule:
-      interval: "weekly"
+      interval: "yearly"
 
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
     cooldown:
-      default-days: 30
+      default-days: 2
     groups:
       python-dependencies:
         patterns:
@@ -21,7 +21,7 @@ updates:
     schedule:
       interval: "weekly"
     cooldown:
-      default-days: 30
+      default-days: 2
     groups:
       github-actions:
         patterns:
