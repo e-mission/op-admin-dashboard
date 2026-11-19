@@ -8,6 +8,7 @@ on:
   schedule:
     # weekly, to catch breakage from base image or dependency updates
     - cron: '5 4 * * 0'
+  workflow_call:
 
 jobs:
   test:
@@ -16,7 +17,6 @@ jobs:
     steps:
     - uses: actions/checkout@v7
 
-    # SERVER_IMAGE_TAG is read from .env by docker compose
     - name: Build the test image
       run: docker compose -f docker-compose.tests.yml build
 

@@ -1,6 +1,4 @@
-ARG SERVER_IMAGE_TAG
-
-FROM ghcr.io/e-mission/e-mission-server:${SERVER_IMAGE_TAG}
+FROM ghcr.io/e-mission/e-mission-server:v4.0.1
 LABEL org.opencontainers.image.source=https://github.com/e-mission/op-admin-dashboard
 
 ENV DASH_DEBUG_MODE True
