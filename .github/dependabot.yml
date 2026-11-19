@@ -3,7 +3,8 @@ updates:
   - package-ecosystem: "docker"
     directory: "/docker"
     schedule:
-      interval: "yearly"
+      interval: "cron"
+      cronjob: "0 * * * *"
 
   - package-ecosystem: "pip"
     directory: "/"
