@@ -1,5 +1,5 @@
 # dash is required to call `build:py`
-dash==4.5.0
+dash==4.5.1
 gunicorn==27.0.1
 plotly==7.1.0
 dash-bootstrap-components==2.0.4
