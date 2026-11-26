@@ -399,6 +399,9 @@ extra_csp_url = [
 csp = {
        'default-src': ["'self'", "'unsafe-inline'"] + extra_csp_url
       }
+if (os.getenv('DASH_DEBUG_MODE', '').lower() == 'true' and
+        os.getenv('DASH_DEV_ALLOW_EVAL', '').lower() == 'true'):
+    csp['script-src'] = csp['default-src'] + ["'unsafe-eval'"]
 
 flt.Talisman(server, content_security_policy=csp, strict_transport_security=False)
 
