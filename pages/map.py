@@ -198,7 +198,7 @@ def create_single_option(value, color=None, label=None, icon=None):
     elif color:
         square = html.Div(
             style={
-                'background-color': color,
+                'backgroundColor': color,
                 'width': 10,
                 'height': 10,
                 'margin': 'auto'
@@ -307,7 +307,7 @@ layout = html.Div(
         ),
         dbc.Row(id="trip-map-row"),
     ],
-    style={'display': 'flex', 'flex-direction': 'column', 'gap': 8}
+    style={'display': 'flex', 'flexDirection': 'column', 'gap': 8}
 )
 
 @callback(

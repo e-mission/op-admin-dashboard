@@ -174,14 +174,14 @@ def make_controls():
               id="collapse-button",
               n_clicks=0,
               style={'color': '#444', 'border': '1px solid #dbdbdb',
-                    'border-radius': '3px', 'margin-left': '3px'}
+                    'borderRadius': '3px', 'marginLeft': '3px'}
           ),
       ],
-          style={'display': 'flex', 'margin-left': 'auto'},
+          style={'display': 'flex', 'marginLeft': 'auto'},
       ),
       dbc.Collapse([
           html.Div([
-              html.Span('Query trips using: ', style={'margin-right': '10px'}),
+              html.Span('Query trips using: ', style={'marginRight': '10px'}),
               dcc.Dropdown(
                   id='date-picker-timezone',
                   options=[
@@ -198,7 +198,7 @@ def make_controls():
       ],
           id='collapse-filters',
           is_open=False,
-          style={'padding': '5px 15px 10px', 'border': '1px solid #dbdbdb', 'border-top': '0'}
+          style={'padding': '5px 15px 10px', 'border': '1px solid #dbdbdb', 'borderTop': '0'}
       ),
       html.Div([
           html.Span('Exclude subgroups:'),
@@ -211,13 +211,13 @@ def make_controls():
           ),
       ],
           style={'display': 'flex', 'gap': '5px',
-                 'align-items': 'center', 'margin-top': '10px'}
+                 'alignItems': 'center', 'marginTop': '10px'}
       ),
   ],
       style={'margin': '10px 10px 0 auto',
              'width': 'fit-content',
              'display': 'flex',
-             'flex-direction': 'column'}
+             'flexDirection': 'column'}
   )
 
 page_content = dcc.Loading(
@@ -225,10 +225,10 @@ page_content = dcc.Loading(
     type='default',
     fullscreen=True,
     overlay_style={"visibility": "visible", "filter": "opacity(0.5)"},
-    style={"background-color": "transparent"},
+    style={"backgroundColor": "transparent"},
     children=html.Div(dash.page_container, style={
-        "margin-left": "5rem",
-        "margin-right": "2rem",
+        "marginLeft": "5rem",
+        "marginRight": "2rem",
         "padding": "2rem 1rem",
     })
 )
