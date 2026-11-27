@@ -30,15 +30,34 @@ This runs two tests:
 
 The tests use the same environment configuration as production deployment, including `REACT_VERSION: "19.2.4"`, `DASH_DEBUG_MODE: False`, and production-equivalent settings via `docker-compose.tests.yml`.
 
-**Build Status:** The rebuild with `docker compose -f docker-compose.tests.yml up -d --build` completes successfully. Both the main dashboard image (`e-mission/opdash:0.0.1`) and test image (`e-mission/opdash-tests:0.0.1`) build without errors.
+**Build Status:** ✅ The rebuild with `docker compose -f docker-compose.tests.yml up -d --build` completes successfully. Both the main dashboard image (`e-mission/opdash:0.0.1`) and test image (`e-mission/opdash-tests:0.0.1`) build without errors.
 
-**Test Status:** 
+**Test Status:** ✅ **ALL TESTS PASSING**
 - ✅ `test_app_connectivity` - **PASSES**: HTTP basic auth connectivity verified
-- ⚠️ `test_app_renders_in_browser` - **FAILS**: Detects expected ERROR messages from Dash callbacks. The test currently fails when ANY ERROR is found in the browser console. The errors are expected behavior:
-  - Callback errors updating `store-uuids.data`, `store-excluded-uuids.data`, and `store-trips.data` (returning 500 responses)
-  - These indicate the backend is unable to fetch data (expected when database is not fully configured)
-  
-**Note:** Do not run the tests with your system Python. Always use docker-compose as shown above. The test validation logic should be updated to allow expected callback errors.
+- ✅ `test_app_renders_in_browser` - **PASSES**: Browser renders authenticated dashboard with 0 console ERRORs
+
+**Key Fixes Implemented:**
+
+1. **Store Callback Error Handling** - Implemented generic `_safe_store_callback()` wrapper that centralizes error handling for all store callbacks (`update_store_uuids`, `update_store_surveys`, `update_store_trips`). The wrapper behavior is controlled by the `STORE_CALLBACK_ERROR_MODE` environment variable:
+   - `'error'` mode in dev/test: Re-raises exceptions to catch bugs early
+   - `'fallback'` mode in production: Catches exceptions and returns default empty data structures for graceful degradation
+
+2. **Empty DataFrame Handling** - Fixed `query_users()` in `utils/db_utils.py` to properly handle empty database results:
+   - When `uuids_df` is empty, it's initialized with required columns: `user_id`, `update_ts`, `user_token`
+   - When `profiles_df` is empty, it's initialized with required column: `user_id`
+   - This prevents `KeyError` exceptions when downstream code tries to access or merge on these columns
+
+3. **React CSS Style Properties** - Converted all inline CSS styles from kebab-case to camelCase (e.g., `border-radius` → `borderRadius`):
+   - Updated 7+ files and 15+ CSS properties to be React-compatible
+   - Eliminated all "Unsupported style property" console warnings
+
+4. **Environment-Based Configuration** - Set `STORE_CALLBACK_ERROR_MODE` in all docker-compose files:
+   - `docker-compose.tests.yml`: `'error'` mode (fail fast on issues)
+   - `docker-compose-dev.yml`: `'error'` mode (catch bugs during development)
+   - `docker-compose-prod.yml`: `'fallback'` mode (graceful degradation in production)
+   - `docker-compose-prod-nginx.yml`: `'fallback'` mode (graceful degradation with reverse proxy)
+
+**Note:** Do not run the tests with your system Python. Always use docker-compose as shown above.
 
 ## Test with a reverse proxy
 
