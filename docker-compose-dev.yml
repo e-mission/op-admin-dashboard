@@ -22,6 +22,7 @@ services:
       AUTH_TYPE: "basic" # the other option is cognito
       REACT_VERSION: "19.2.4"
       STORE_CALLBACK_ERROR_MODE: "error"
+      DASH_ENV: "dev"
     networks:
        - emission
     volumes:

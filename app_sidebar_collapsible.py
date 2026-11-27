@@ -448,7 +448,11 @@ if (os.getenv('DASH_DEBUG_MODE', '').lower() == 'true' and
         os.getenv('DASH_DEV_ALLOW_EVAL', '').lower() == 'true'):
     csp['script-src'] = csp['default-src'] + ["'unsafe-eval'"]
 
-flt.Talisman(server, content_security_policy=csp, strict_transport_security=False, force_https=False)
+# Enforce HTTPS by default; only disable in development environments
+# In production, HTTPS must be enforced to protect credentials and data
+dash_env = os.getenv('DASH_ENV', 'production').lower()
+force_https = dash_env != 'dev'
+flt.Talisman(server, content_security_policy=csp, strict_transport_security=False, force_https=force_https)
 
 if __name__ == "__main__":
     envPort = int(os.getenv('DASH_SERVER_PORT', '8050'))

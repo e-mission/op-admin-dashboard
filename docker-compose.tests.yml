@@ -16,6 +16,7 @@ services:
       AUTH_TYPE: "basic"
       REACT_VERSION: "19.2.4"
       STORE_CALLBACK_ERROR_MODE: "error"
+      DASH_ENV: "dev"
     depends_on:
       - db
     volumes:
