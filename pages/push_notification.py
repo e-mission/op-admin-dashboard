@@ -121,7 +121,7 @@ layout = html.Div([
     ],
         style={
             'display': 'flex',
-            'flex-direction': 'column',
+            'flexDirection': 'column',
             'gap': '15px',
             'padding': '20px',
         },

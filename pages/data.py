@@ -51,7 +51,7 @@ layout = html.Div(
                         {'label': 'Background/Location', 'value': 'background/location'}
                     ],
                     value='analysis/recreated_location',  # Default value
-                    labelStyle={'display': 'inline-block', 'margin-right': '10px'}
+                    labelStyle={'display': 'inline-block', 'marginRight': '10px'}
                 ),
             ],
             style={'display': 'none'}  # Initially hidden, will show only for the "Trajectories" tab
@@ -206,9 +206,9 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
                     logging.debug(f"Callback - {selected_tab} loaded_trips is empty.")
                     content = html.Div(
                         [
-                            html.Div("No data available", style={'text-align': 'center', 'margin-bottom': '16px'}),
+                            html.Div("No data available", style={'textAlign': 'center', 'marginBottom': '16px'}),
                         ],
-                        style={'margin-top': '36px'}
+                        style={'marginTop': '36px'}
                     )
 
                 elif not has_perm:
@@ -248,13 +248,13 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
                             label="Include human-friendly units for distance and duration",
                             id="humanize-units",
                             checked=True,
-                            style={'margin-bottom': '12px'}
+                            style={'marginBottom': '12px'}
                         ),
                         dmc.Checkbox(
                             label="Expand user_input to separate columns",
                             id="expand-user-input",
                             checked=False,
-                            style={'margin-bottom': '12px'}
+                            style={'marginBottom': '12px'}
                         ),
                         trips_table
                     ])
@@ -316,9 +316,9 @@ def render_content(tab, store_uuids, store_excluded_uuids, store_trips, store_su
                 else:
                     content = html.Div(
                         [
-                            html.Div("No data available", style={'text-align': 'center', 'margin-bottom': '16px'}),
+                            html.Div("No data available", style={'textAlign': 'center', 'marginBottom': '16px'}),
                         ],
-                        style={'margin-top': '36px'}
+                        style={'marginTop': '36px'}
                     )
 
             # Store timing after handling Trajectories tab

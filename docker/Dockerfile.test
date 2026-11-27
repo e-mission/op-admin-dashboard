@@ -3,7 +3,7 @@ FROM dashboard-base
 
 WORKDIR /usr/src/app
 COPY requirements-dev.txt dashboard_setup/
-RUN bash -c "source setup/activate.sh && pip install -r dashboard_setup/requirements-dev.txt"
+RUN bash -c "source setup/activate.sh && pip install -r dashboard_setup/requirements-dev.txt && python -m playwright install --with-deps chromium"
 
 COPY ./tests ./tests
 COPY docker/start_tests.sh dashboard_setup/

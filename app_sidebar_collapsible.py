@@ -28,6 +28,9 @@ if os.getenv('DASH_DEBUG_MODE', 'True').lower() == 'true':
 
 from utils.datetime_utils import iso_to_date_only
 from utils.db_utils import df_to_filtered_records, query_users, query_confirmed_trips, query_surveys
+
+# Error handling mode: 'error' in dev/test to catch bugs, 'fallback' in production for graceful degradation
+STORE_CALLBACK_ERROR_MODE = os.getenv('STORE_CALLBACK_ERROR_MODE', 'fallback')
 from utils.permissions import has_permission, config
 import flask_talisman as flt
 
@@ -174,14 +177,14 @@ def make_controls():
               id="collapse-button",
               n_clicks=0,
               style={'color': '#444', 'border': '1px solid #dbdbdb',
-                    'border-radius': '3px', 'margin-left': '3px'}
+                    'borderRadius': '3px', 'marginLeft': '3px'}
           ),
       ],
-          style={'display': 'flex', 'margin-left': 'auto'},
+          style={'display': 'flex', 'marginLeft': 'auto'},
       ),
       dbc.Collapse([
           html.Div([
-              html.Span('Query trips using: ', style={'margin-right': '10px'}),
+              html.Span('Query trips using: ', style={'marginRight': '10px'}),
               dcc.Dropdown(
                   id='date-picker-timezone',
                   options=[
@@ -198,7 +201,7 @@ def make_controls():
       ],
           id='collapse-filters',
           is_open=False,
-          style={'padding': '5px 15px 10px', 'border': '1px solid #dbdbdb', 'border-top': '0'}
+          style={'padding': '5px 15px 10px', 'border': '1px solid #dbdbdb', 'borderTop': '0'}
       ),
       html.Div([
           html.Span('Exclude subgroups:'),
@@ -211,13 +214,13 @@ def make_controls():
           ),
       ],
           style={'display': 'flex', 'gap': '5px',
-                 'align-items': 'center', 'margin-top': '10px'}
+                 'alignItems': 'center', 'marginTop': '10px'}
       ),
   ],
       style={'margin': '10px 10px 0 auto',
              'width': 'fit-content',
              'display': 'flex',
-             'flex-direction': 'column'}
+             'flexDirection': 'column'}
   )
 
 page_content = dcc.Loading(
@@ -225,10 +228,10 @@ page_content = dcc.Loading(
     type='default',
     fullscreen=True,
     overlay_style={"visibility": "visible", "filter": "opacity(0.5)"},
-    style={"background-color": "transparent"},
+    style={"backgroundColor": "transparent"},
     children=html.Div(dash.page_container, style={
-        "margin-left": "5rem",
-        "margin-right": "2rem",
+        "marginLeft": "5rem",
+        "marginRight": "2rem",
         "padding": "2rem 1rem",
     })
 )
@@ -284,15 +287,29 @@ def toggle_collapse_filters(n, is_open):
       return (True, "fas fa-chevron-up")
 
 # Load data stores
-@app.callback(
-    Output("store-uuids", "data"),
-    Output("store-excluded-uuids", "data"),
-    Input('date-picker', 'start_date'),  # these are ISO strings
-    Input('date-picker', 'end_date'),  # these are ISO strings
-    Input('date-picker-timezone', 'value'),
-    Input('excluded-subgroups', 'value'),
-)
-def update_store_uuids(start_date, end_date, timezone, excluded_subgroups):
+
+def _safe_store_callback(callback_impl, default_return):
+    """
+    Generic wrapper for store callbacks to handle exceptions.
+    
+    Behavior depends on STORE_CALLBACK_ERROR_MODE:
+    - 'error': Re-raise exceptions (dev/test mode - catches bugs early)
+    - 'fallback': Return default value (production - graceful degradation)
+    
+    Always logs the error for debugging.
+    """
+    def wrapper(*args, **kwargs):
+        try:
+            return callback_impl(*args, **kwargs)
+        except Exception as e:
+            logging.error(f"Error in store callback: {e}", exc_info=True)
+            if STORE_CALLBACK_ERROR_MODE == 'error':
+                raise
+            return default_return
+    return wrapper
+
+
+def _update_store_uuids_impl(start_date, end_date, timezone, excluded_subgroups):
     (start_date, end_date) = iso_to_date_only(start_date, end_date)
     users_df = query_users()
     if users_df.empty:
@@ -318,6 +335,34 @@ def update_store_uuids(start_date, end_date, timezone, excluded_subgroups):
 
 
 @app.callback(
+    Output("store-uuids", "data"),
+    Output("store-excluded-uuids", "data"),
+    Input('date-picker', 'start_date'),  # these are ISO strings
+    Input('date-picker', 'end_date'),  # these are ISO strings
+    Input('date-picker-timezone', 'value'),
+    Input('excluded-subgroups', 'value'),
+)
+def update_store_uuids(start_date, end_date, timezone, excluded_subgroups):
+    return _safe_store_callback(
+        _update_store_uuids_impl,
+        ({"data": [], "length": 0}, {"data": [], "length": 0})
+    )(start_date, end_date, timezone, excluded_subgroups)
+
+
+def _update_store_surveys_impl(start_date, end_date, timezone, excluded_uuids):
+    (start_date, end_date) = iso_to_date_only(start_date, end_date)
+    dataframes = query_surveys(start_date, end_date, timezone)
+    records = {}
+    for key, df in dataframes.items():
+        records[key] = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
+    store = {
+        "data": records,
+        "length": len(records),
+    }
+    return store
+
+
+@app.callback(
     Output("store-surveys", "data"),
     Input('date-picker', 'start_date'),
     Input('date-picker', 'end_date'),
@@ -325,11 +370,16 @@ def update_store_uuids(start_date, end_date, timezone, excluded_subgroups):
     Input('store-excluded-uuids', 'data'),
 )
 def update_store_surveys(start_date, end_date, timezone, excluded_uuids):
+    return _safe_store_callback(
+        _update_store_surveys_impl,
+        {"data": {}, "length": 0}
+    )(start_date, end_date, timezone, excluded_uuids)
+
+
+def _update_store_trips_impl(start_date, end_date, timezone, excluded_uuids):
     (start_date, end_date) = iso_to_date_only(start_date, end_date)
-    dataframes = query_surveys(start_date, end_date, timezone)
-    records = {}
-    for key, df in dataframes.items():
-        records[key] = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
+    df = query_confirmed_trips(start_date, end_date, timezone)
+    records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
     store = {
         "data": records,
         "length": len(records),
@@ -346,15 +396,10 @@ def update_store_surveys(start_date, end_date, timezone, excluded_uuids):
     Input('store-excluded-uuids', 'data'),
 )
 def update_store_trips(start_date, end_date, timezone, excluded_uuids):
-    (start_date, end_date) = iso_to_date_only(start_date, end_date)
-    df = query_confirmed_trips(start_date, end_date, timezone)
-    records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
-    # logging.debug("returning records %s" % records[0:2])
-    store = {
-        "data": records,
-        "length": len(records),
-    }
-    return store
+    return _safe_store_callback(
+        _update_store_trips_impl,
+        {"data": [], "length": 0}
+    )(start_date, end_date, timezone, excluded_uuids)
 
 
 @app.callback(
@@ -399,8 +444,15 @@ extra_csp_url = [
 csp = {
        'default-src': ["'self'", "'unsafe-inline'"] + extra_csp_url
       }
+if (os.getenv('DASH_DEBUG_MODE', '').lower() == 'true' and
+        os.getenv('DASH_DEV_ALLOW_EVAL', '').lower() == 'true'):
+    csp['script-src'] = csp['default-src'] + ["'unsafe-eval'"]
 
-flt.Talisman(server, content_security_policy=csp, strict_transport_security=False)
+# Enforce HTTPS by default; only disable in development environments
+# In production, HTTPS must be enforced to protect credentials and data
+dash_env = os.getenv('DASH_ENV', 'production').lower()
+force_https = dash_env != 'dev'
+flt.Talisman(server, content_security_policy=csp, strict_transport_security=False, force_https=force_https)
 
 if __name__ == "__main__":
     envPort = int(os.getenv('DASH_SERVER_PORT', '8050'))

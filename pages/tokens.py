@@ -26,7 +26,7 @@ layout = html.Div(
         dcc.Store(id="store-tokens", data=[]),
         dcc.Store(id="store-qrcodes", data={}),
         html.Div([
-            dcc.Markdown('## Tokens', style={'margin-right': 'auto'}),
+            dcc.Markdown('## Tokens', style={'marginRight': 'auto'}),
             dbc.Button(children='Generate more tokens', id='open-modal-btn', n_clicks=0),
             dbc.Button(children='Export QR codes',
                        color='primary',
@@ -34,7 +34,7 @@ layout = html.Div(
                        id='token-export', n_clicks=0),
             dcc.Download(id='download-tokens'),
         ],
-            style={'display': 'flex', 'gap': '5px', 'margin-bottom': '20px'}
+            style={'display': 'flex', 'gap': '5px', 'marginBottom': '20px'}
         ),
         html.Div(id='token-table'),
         dbc.Modal([
@@ -71,10 +71,10 @@ layout = html.Div(
                     dbc.Button('Close', id='close-modal-btn', color='primary', outline=True, n_clicks=0),
                     dbc.Button('Generate', id='generate-tokens-btn', color='primary', n_clicks=0),
                 ],
-                    style={'display': 'flex', 'gap': '10px', 'margin-top': '20px'}
+                    style={'display': 'flex', 'gap': '10px', 'marginTop': '20px'}
                 ),
             ],
-                style={'display': 'flex', 'flex-direction': 'column', 'gap': '10px'}
+                style={'display': 'flex', 'flexDirection': 'column', 'gap': '10px'}
             )
         ],
             id="generate-tokens-modal",

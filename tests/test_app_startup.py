@@ -1,60 +1,206 @@
-import http.client
+"""
+Smoke test for the op-admin-dash application.
+Connects to running app service and verifies both HTTP and browser rendering.
+Does not start a subprocess - assumes app is already running in a container.
+"""
+import http.client as httplib
 import os
-import pathlib
-import socket
-import subprocess
-import sys
-import time
+import socket as socket_module
+import time as time_module
 
-import pytest
+import playwright.sync_api as playwright_sync
 
-APP_DIR = pathlib.Path(__file__).resolve().parent.parent
 STARTUP_TIMEOUT_SECS = 60
 
+# When running in docker-compose, the app is accessible via the service name
+# When running locally, it's at localhost:8050
+APP_HOST = os.environ.get("APP_HOST", "localhost")
+APP_PORT = int(os.environ.get("APP_PORT", "8050"))
 
-def _free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+
+def _wait_for_app_connectivity(url):
+    """Helper: Wait for app to be accessible via HTTP."""
+    deadline = time_module.time() + STARTUP_TIMEOUT_SECS
+    while time_module.time() < deadline:
+        try:
+            sock = socket_module.socket(socket_module.AF_INET, socket_module.SOCK_STREAM)
+            result = sock.connect_ex((APP_HOST, APP_PORT))
+            sock.close()
+            if result == 0:
+                time_module.sleep(1)  # Give it a moment to fully initialize
+                return
+        except Exception:
+            pass
+        time_module.sleep(1)
+    raise RuntimeError(f"App not accessible at {url} within {STARTUP_TIMEOUT_SECS}s")
 
 
-@pytest.fixture
-def running_app(tmp_path):
-    port = _free_port()
-    log_path = tmp_path / "app.log"
-    env = dict(os.environ, DASH_SERVER_PORT=str(port), DASH_DEBUG_MODE="False")
-    with open(log_path, "w") as log:
-        proc = subprocess.Popen(
-            [sys.executable, "app_sidebar_collapsible.py"],
-            cwd=APP_DIR,
-            env=env,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-        )
+def test_app_connectivity():
+    """
+    Test basic HTTP connectivity to the op-admin-dash application.
+    
+    Verifies:
+    1. App is accessible on the network
+    2. App responds to HTTP requests with 200 or 401 status
+    """
+    url = f"http://{APP_HOST}:{APP_PORT}/"
+    
+    # Wait for app to be accessible
+    _wait_for_app_connectivity(url)
+    
+    # Verify HTTP response
     try:
-        yield proc, port, log_path
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        conn = httplib.HTTPConnection(APP_HOST, APP_PORT, timeout=5)
+        conn.request("GET", "/")
+        response = conn.getresponse()
+        status = response.status
+        conn.close()
+        assert status in [200, 401], f"Expected 200 or 401 (login), got {status}"
+        print(f"✓ HTTP connectivity check passed (status {status})")
+    except Exception as e:
+        raise AssertionError(f"HTTP connectivity check failed: {e}")
 
 
-def test_app_starts_and_serves_index(running_app):
-    proc, port, log_path = running_app
-    deadline = time.time() + STARTUP_TIMEOUT_SECS
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            pytest.fail(f"App exited with code {proc.returncode}:\n{log_path.read_text()}")
+def test_app_renders_in_browser():
+    """
+    Test that the op-admin-dash application renders correctly in a browser.
+    
+    Verifies:
+    1. Page loads in Playwright headless browser with HTTP Basic Auth
+    2. Auth works with test credentials (user: hello, password: world)
+    3. Authenticated page renders with HTML structure and visible content
+    4. No ERROR messages in browser console (catches React errors, CSP violations, etc.)
+    """
+    url = f"http://{APP_HOST}:{APP_PORT}/"
+    
+    # Wait for app to be accessible
+    _wait_for_app_connectivity(url)
+    
+    # Use Playwright to verify page renders and login works
+    with playwright_sync.sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
         try:
-            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-            # Talisman redirects plain HTTP to HTTPS unless the request looks proxied over HTTPS
-            conn.request("GET", "/", headers={"X-Forwarded-Proto": "https"})
-            status = conn.getresponse().status
-            conn.close()
-            assert status == 200
-            return
-        except (ConnectionRefusedError, OSError):
-            time.sleep(1)
-    pytest.fail(f"App did not respond on port {port} within {STARTUP_TIMEOUT_SECS}s")
+            # Create context with HTTP Basic Auth credentials
+            context = browser.new_context(
+                http_credentials={"username": "hello", "password": "world"},
+                ignore_https_errors=True
+            )
+            page = context.new_page()
+            
+            # Collect browser console messages and uncaught JavaScript exceptions
+            console_messages = []
+            page_errors = []
+            
+            def handle_console(msg):
+                console_messages.append(f"[{msg.type.upper()}] {msg.text}")
+            
+            def handle_page_error(exc):
+                # Capture uncaught JavaScript exceptions (use pageerror event, not console)
+                page_errors.append(f"[PAGEERROR] {exc}")
+            
+            page.on("console", handle_console)
+            page.on("pageerror", handle_page_error)
+            
+            page_content = None
+            try:
+                # Navigate to the app with HTTP Basic Auth
+                page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            except Exception as e:
+                try:
+                    page_content = page.content()
+                except:
+                    pass
+                error_msg = f"Failed to load page: {e}\nURL: {url}"
+                if console_messages:
+                    error_msg += "\n\nBrowser Console Messages:\n" + "\n".join(console_messages)
+                if page_errors:
+                    error_msg += "\n\nUncaught JavaScript Exceptions:\n" + "\n".join(page_errors)
+                if page_content:
+                    error_msg += f"\n\nPage Content ({len(page_content)} bytes):\n{page_content[:2000]}"
+                raise AssertionError(error_msg)
+            
+            print(f"✓ Page loaded successfully")
+            print(f"✓ HTTP Basic Auth successful")
+            
+            # Initialize errors list for validation checks
+            errors = []
+            
+            # Wait for a callback-populated element to verify rendering and callback completion
+            # Look for the sign-up trend plot, which is dynamically generated by a callback
+            # This is better than waiting for static text, as it confirms callbacks actually completed
+            try:
+                page.wait_for_selector("#fig-sign-up-trend svg", timeout=15000)
+                print(f"✓ Dashboard callbacks completed and data rendered")
+            except Exception as e:
+                errors.append(f"Dashboard plot failed to render: {e}")
+                print(f"✗ Timeout waiting for plot: {e}")
+                # Debug: Check if the plot div exists but has no SVG
+                plot_div_exists = page.query_selector("#fig-sign-up-trend") is not None
+                print(f"  Debug: Plot div exists: {plot_div_exists}")
+                if plot_div_exists:
+                    plot_content = page.inner_html("#fig-sign-up-trend")
+                    print(f"  Debug: Plot div content length: {len(plot_content)} bytes")
+            
+            # Verify page content and console health
+            page_content = page.content()
+            
+            if not (len(page_content) > 100):
+                errors.append("Page content is suspiciously short")
+            
+            if not ("<!DOCTYPE html>" in page_content or "<html" in page_content):
+                errors.append("Page doesn't contain HTML structure")
+            
+            body = page.query_selector("body")
+            if body is None:
+                errors.append("Body element not found")
+            else:
+                body_text = page.text_content("body")
+                if not (body_text and len(body_text.strip()) > 0):
+                    errors.append("No visible text content found on page")
+            
+            # Print all console messages and errors for debugging
+            print(f"\n{'='*80}")
+            print(f"BROWSER CONSOLE OUTPUT ({len(console_messages)} messages)")
+            print(f"{'='*80}")
+            error_count = 0
+            warning_count = 0
+            log_count = 0
+            for msg in console_messages:
+                print(msg)
+                if "[ERROR]" in msg:
+                    error_count += 1
+                elif "[WARNING]" in msg:
+                    warning_count += 1
+                else:
+                    log_count += 1
+            
+            if page_errors:
+                print(f"\nUNCAUGHT JAVASCRIPT EXCEPTIONS ({len(page_errors)})")
+                print(f"{'='*80}")
+                for exc in page_errors:
+                    print(exc)
+                    error_count += 1
+            
+            print(f"{'='*80}")
+            print(f"Summary: {error_count} ERRORs, {warning_count} WARNINGs, {log_count} other messages")
+            print(f"{'='*80}\n")
+            
+            # Check for any ERROR messages in browser console or uncaught exceptions
+            all_errors = [msg for msg in console_messages if "[ERROR]" in msg] + page_errors
+            if all_errors:
+                errors.append(f"Found {len(all_errors)} ERROR messages in browser console or uncaught exceptions")
+            
+            if errors:
+                error_msg = "Page validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+                if console_messages:
+                    error_msg += "\n\nBrowser Console Messages:\n" + "\n".join(console_messages)
+                error_msg += f"\n\nPage Content ({len(page_content)} bytes):\n{page_content[:2000]}"
+                raise AssertionError(error_msg)
+            
+            print(f"✓ Page rendered successfully with valid content")
+            print(f"✓ Browser loaded page with HTML structure and visible content")
+            print(f"\n✅ Browser rendering test passed for {url}")
+        
+        finally:
+            browser.close()
+

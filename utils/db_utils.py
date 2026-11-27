@@ -61,7 +61,9 @@ def query_users():
         logging.debug("Querying for all UUIDs")
         uuids_entries = edb.get_uuid_db().find()
         uuids_df = pd.json_normalize(list(uuids_entries))
-        if not uuids_df.empty:
+        if uuids_df.empty:
+            uuids_df = pd.DataFrame(columns=['user_id', 'update_ts', 'user_token'])
+        else:
             uuids_df['update_ts'] = pd.to_datetime(uuids_df['update_ts'])
             uuids_df['user_id'] = uuids_df['uuid'].apply(str)
             uuids_df['user_token'] = uuids_df['user_email']
@@ -75,8 +77,11 @@ def query_users():
         logging.debug("Querying for all User Profiles")
         profiles_entries = edb.get_profile_db().find()
         profiles_df = pd.json_normalize(list(profiles_entries))
-        profiles_df['user_id'] = profiles_df['user_id'].apply(str)
-        profiles_df.drop(columns=["_id"], inplace=True)
+        if profiles_df.empty:
+            profiles_df = pd.DataFrame(columns=['user_id'])
+        else:
+            profiles_df['user_id'] = profiles_df['user_id'].apply(str)
+            profiles_df.drop(columns=["_id"], inplace=True)
     esdsq.store_dashboard_time(
         "admin/db_utils/query_users/query_profiles",
         profiles_timer,

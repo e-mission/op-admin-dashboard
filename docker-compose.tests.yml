@@ -5,6 +5,26 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     image: e-mission/opdash:0.0.1
+    environment:
+      DASH_DEBUG_MODE: "False"
+      DASH_SERVER_PORT: 8050
+      DB_HOST: db
+      WEB_SERVER_HOST: 0.0.0.0
+      SERVER_BRANCH: master
+      CONFIGS_URL: "https://raw.githubusercontent.com/e-mission/op-deployment-configs/main/configs/"
+      STUDY_CONFIG: "stage-program"
+      AUTH_TYPE: "basic"
+      REACT_VERSION: "19.2.4"
+      STORE_CALLBACK_ERROR_MODE: "error"
+      DASH_ENV: "dev"
+    depends_on:
+      - db
+    volumes:
+      - ./pages:/usr/src/app/pages
+      - ./utils:/usr/src/app/utils
+      - ./app.py:/usr/src/app/app.py
+      - ./app_sidebar_collapsible.py:/usr/src/app/app_sidebar_collapsible.py
+  
   dashboard-tests:
     build:
       context: .
@@ -13,16 +33,14 @@ services:
         dashboard-base: service:dashboard
     image: e-mission/opdash-tests:0.0.1
     environment:
-      DASH_DEBUG_MODE: "True"
+      APP_HOST: dashboard
+      APP_PORT: 8050
       PYTHONPATH: /usr/src/app
-      DB_HOST: db
-      CONFIGS_URL: "https://raw.githubusercontent.com/e-mission/op-deployment-configs/main/configs/"
-      STUDY_CONFIG: "stage-program"
     depends_on:
-      - db
+      - dashboard
     volumes:
-      - ./pages:/usr/src/app/pages
-      - ./utils:/usr/src/app/utils
       - ./tests:/usr/src/app/tests
+    command: bash -c "source setup/activate.sh && pytest tests/test_app_startup.py -v -s"
+  
   db:
     image: mongo:8.0.4

@@ -57,14 +57,14 @@ def get_cognito_login_page(text='Welcome to the dashboard', color='black'):
         dbc.Row([
             dbc.Col([
                 dash.html.Label(text, style={
-                    'font-size': '15px', 'display': 'block', 'verticalAlign': 'top', 'padding': '15px', 'color': color
+                    'fontSize': '15px', 'display': 'block', 'verticalAlign': 'top', 'padding': '15px', 'color': color
                 }),
                 dbc.Button('Login with AWS Cognito', id='login-button', href=os.getenv("COGNITO_AUTH_URL", ''), style={
-                    'font-size': '14px', 'display': 'block', 'padding': '15px', 'verticalAlign': 'top',
-                    'background-color': 'green', 'color': 'white'
+                    'fontSize': '14px', 'display': 'block', 'padding': '15px', 'verticalAlign': 'top',
+                    'backgroundColor': 'green', 'color': 'white'
                 }),
-            ], style={'display': 'flex', 'justify_content': 'center', 'align-items': 'center',
-                      'flex-direction': 'column'}),
+            ], style={'display': 'flex', 'justifyContent': 'center', 'alignItems': 'center',
+                      'flexDirection': 'column'}),
         ])
     ]
 
