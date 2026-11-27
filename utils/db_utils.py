@@ -81,7 +81,7 @@ def query_users():
             profiles_df = pd.DataFrame(columns=['user_id'])
         else:
             profiles_df['user_id'] = profiles_df['user_id'].apply(str)
-        profiles_df.drop(columns=["_id"], inplace=True)
+            profiles_df.drop(columns=["_id"], inplace=True)
     esdsq.store_dashboard_time(
         "admin/db_utils/query_users/query_profiles",
         profiles_timer,
