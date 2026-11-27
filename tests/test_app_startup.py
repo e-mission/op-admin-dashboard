@@ -66,8 +66,8 @@ def test_app_renders_in_browser():
     Test that the op-admin-dash application renders correctly in a browser.
     
     Verifies:
-    1. Page loads in Playwright headless browser
-    2. Login works with test credentials (user: hello, password: world)
+    1. Page loads in Playwright headless browser with HTTP Basic Auth
+    2. Auth works with test credentials (user: hello, password: world)
     3. Authenticated page renders with HTML structure and visible content
     4. No ERROR messages in browser console (catches React errors, CSP violations, etc.)
     """
@@ -80,7 +80,11 @@ def test_app_renders_in_browser():
     with playwright_sync.sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         try:
-            context = browser.new_context()
+            # Create context with HTTP Basic Auth credentials
+            context = browser.new_context(
+                http_credentials={"username": "hello", "password": "world"},
+                ignore_https_errors=True
+            )
             page = context.new_page()
             
             # Collect browser console messages
@@ -93,7 +97,7 @@ def test_app_renders_in_browser():
             
             page_content = None
             try:
-                # Navigate to the app login page
+                # Navigate to the app with HTTP Basic Auth
                 page.goto(url, wait_until="domcontentloaded", timeout=10000)
             except Exception as e:
                 try:
@@ -108,44 +112,7 @@ def test_app_renders_in_browser():
                 raise AssertionError(error_msg)
             
             print(f"✓ Page loaded successfully")
-            
-            # Login with test credentials
-            try:
-                username_field = page.query_selector('input[type="text"]')
-                if not username_field:
-                    username_field = page.query_selector('input[name="username"]')
-                if not username_field:
-                    username_field = page.query_selector('input')
-                
-                if username_field:
-                    username_field.fill("hello")
-                
-                password_field = page.query_selector('input[type="password"]')
-                if password_field:
-                    password_field.fill("world")
-                
-                login_button = page.query_selector('button[type="submit"]')
-                if not login_button:
-                    login_button = page.query_selector('button')
-                
-                if login_button:
-                    login_button.click()
-                    page.wait_for_load_state("networkidle", timeout=10000)
-                else:
-                    raise AssertionError("Could not find login button")
-            except Exception as e:
-                try:
-                    page_content = page.content()
-                except:
-                    pass
-                error_msg = f"Login failed: {e}"
-                if console_messages:
-                    error_msg += "\n\nBrowser Console Messages:\n" + "\n".join(console_messages)
-                if page_content:
-                    error_msg += f"\n\nPage Content ({len(page_content)} bytes):\n{page_content[:2000]}"
-                raise AssertionError(error_msg)
-            
-            print(f"✓ Login successful")
+            print(f"✓ HTTP Basic Auth successful")
             
             # Give page time to render after login
             page.wait_for_timeout(2000)
@@ -168,10 +135,29 @@ def test_app_renders_in_browser():
                 if not (body_text and len(body_text.strip()) > 0):
                     errors.append("No visible text content found on page")
             
-            # Check for critical errors in console
-            critical_errors = [msg for msg in console_messages if "[ERROR]" in msg]
-            if critical_errors:
-                errors.append(f"Found {len(critical_errors)} ERROR messages in browser console")
+            # Print all console messages for debugging
+            print(f"\n{'='*80}")
+            print(f"BROWSER CONSOLE OUTPUT ({len(console_messages)} messages)")
+            print(f"{'='*80}")
+            error_count = 0
+            warning_count = 0
+            log_count = 0
+            for msg in console_messages:
+                print(msg)
+                if "[ERROR]" in msg:
+                    error_count += 1
+                elif "[WARNING]" in msg:
+                    warning_count += 1
+                else:
+                    log_count += 1
+            print(f"{'='*80}")
+            print(f"Summary: {error_count} ERRORs, {warning_count} WARNINGs, {log_count} other messages")
+            print(f"{'='*80}\n")
+            
+            # Check for any ERROR messages in browser console (including app-level errors)
+            all_errors = [msg for msg in console_messages if "[ERROR]" in msg]
+            if all_errors:
+                errors.append(f"Found {len(all_errors)} ERROR messages in browser console")
             
             if errors:
                 error_msg = "Page validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
@@ -181,7 +167,7 @@ def test_app_renders_in_browser():
                 raise AssertionError(error_msg)
             
             print(f"✓ Page rendered successfully with valid content")
-            print(f"✓ Browser console is clean (no ERROR messages)")
+            print(f"✓ Browser loaded page with HTML structure and visible content")
             print(f"\n✅ Browser rendering test passed for {url}")
         
         finally:

@@ -403,7 +403,7 @@ if (os.getenv('DASH_DEBUG_MODE', '').lower() == 'true' and
         os.getenv('DASH_DEV_ALLOW_EVAL', '').lower() == 'true'):
     csp['script-src'] = csp['default-src'] + ["'unsafe-eval'"]
 
-flt.Talisman(server, content_security_policy=csp, strict_transport_security=False)
+flt.Talisman(server, content_security_policy=csp, strict_transport_security=False, force_https=False)
 
 if __name__ == "__main__":
     envPort = int(os.getenv('DASH_SERVER_PORT', '8050'))
