@@ -25,6 +25,7 @@ services:
       COGNITO_REGION: ''
       COGNITO_AUTH_URL: ''
       REACT_VERSION: "19.2.4"
+      STORE_CALLBACK_ERROR_MODE: "fallback"
     networks:
        - emission
     deploy:

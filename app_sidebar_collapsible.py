@@ -28,6 +28,9 @@ if os.getenv('DASH_DEBUG_MODE', 'True').lower() == 'true':
 
 from utils.datetime_utils import iso_to_date_only
 from utils.db_utils import df_to_filtered_records, query_users, query_confirmed_trips, query_surveys
+
+# Error handling mode: 'error' in dev/test to catch bugs, 'fallback' in production for graceful degradation
+STORE_CALLBACK_ERROR_MODE = os.getenv('STORE_CALLBACK_ERROR_MODE', 'fallback')
 from utils.permissions import has_permission, config
 import flask_talisman as flt
 
@@ -287,14 +290,21 @@ def toggle_collapse_filters(n, is_open):
 
 def _safe_store_callback(callback_impl, default_return):
     """
-    Generic wrapper for store callbacks to handle exceptions gracefully.
-    Returns default_return value if callback_impl raises an exception.
+    Generic wrapper for store callbacks to handle exceptions.
+    
+    Behavior depends on STORE_CALLBACK_ERROR_MODE:
+    - 'error': Re-raise exceptions (dev/test mode - catches bugs early)
+    - 'fallback': Return default value (production - graceful degradation)
+    
+    Always logs the error for debugging.
     """
     def wrapper(*args, **kwargs):
         try:
             return callback_impl(*args, **kwargs)
         except Exception as e:
-            logging.error(f"Error in store callback: {e}")
+            logging.error(f"Error in store callback: {e}", exc_info=True)
+            if STORE_CALLBACK_ERROR_MODE == 'error':
+                raise
             return default_return
     return wrapper
 

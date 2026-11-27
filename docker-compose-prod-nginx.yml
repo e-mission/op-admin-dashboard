@@ -19,6 +19,7 @@ services:
       AUTH_TYPE: "basic" # the other option is cognito
       DASH_REQUESTS_PATHNAME_PREFIX: "/admin/"
       REACT_VERSION: "19.2.4"
+      STORE_CALLBACK_ERROR_MODE: "fallback"
     networks:
        - emission
     deploy:
