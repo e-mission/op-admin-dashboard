@@ -20,6 +20,8 @@ services:
     volumes:
       - ./pages:/usr/src/app/pages
       - ./utils:/usr/src/app/utils
+      - ./app.py:/usr/src/app/app.py
+      - ./app_sidebar_collapsible.py:/usr/src/app/app_sidebar_collapsible.py
   
   dashboard-tests:
     build:

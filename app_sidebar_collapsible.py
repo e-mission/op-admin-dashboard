@@ -284,15 +284,22 @@ def toggle_collapse_filters(n, is_open):
       return (True, "fas fa-chevron-up")
 
 # Load data stores
-@app.callback(
-    Output("store-uuids", "data"),
-    Output("store-excluded-uuids", "data"),
-    Input('date-picker', 'start_date'),  # these are ISO strings
-    Input('date-picker', 'end_date'),  # these are ISO strings
-    Input('date-picker-timezone', 'value'),
-    Input('excluded-subgroups', 'value'),
-)
-def update_store_uuids(start_date, end_date, timezone, excluded_subgroups):
+
+def _safe_store_callback(callback_impl, default_return):
+    """
+    Generic wrapper for store callbacks to handle exceptions gracefully.
+    Returns default_return value if callback_impl raises an exception.
+    """
+    def wrapper(*args, **kwargs):
+        try:
+            return callback_impl(*args, **kwargs)
+        except Exception as e:
+            logging.error(f"Error in store callback: {e}")
+            return default_return
+    return wrapper
+
+
+def _update_store_uuids_impl(start_date, end_date, timezone, excluded_subgroups):
     (start_date, end_date) = iso_to_date_only(start_date, end_date)
     users_df = query_users()
     if users_df.empty:
@@ -318,6 +325,34 @@ def update_store_uuids(start_date, end_date, timezone, excluded_subgroups):
 
 
 @app.callback(
+    Output("store-uuids", "data"),
+    Output("store-excluded-uuids", "data"),
+    Input('date-picker', 'start_date'),  # these are ISO strings
+    Input('date-picker', 'end_date'),  # these are ISO strings
+    Input('date-picker-timezone', 'value'),
+    Input('excluded-subgroups', 'value'),
+)
+def update_store_uuids(start_date, end_date, timezone, excluded_subgroups):
+    return _safe_store_callback(
+        _update_store_uuids_impl,
+        ({"data": [], "length": 0}, {"data": [], "length": 0})
+    )(start_date, end_date, timezone, excluded_subgroups)
+
+
+def _update_store_surveys_impl(start_date, end_date, timezone, excluded_uuids):
+    (start_date, end_date) = iso_to_date_only(start_date, end_date)
+    dataframes = query_surveys(start_date, end_date, timezone)
+    records = {}
+    for key, df in dataframes.items():
+        records[key] = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
+    store = {
+        "data": records,
+        "length": len(records),
+    }
+    return store
+
+
+@app.callback(
     Output("store-surveys", "data"),
     Input('date-picker', 'start_date'),
     Input('date-picker', 'end_date'),
@@ -325,11 +360,16 @@ def update_store_uuids(start_date, end_date, timezone, excluded_subgroups):
     Input('store-excluded-uuids', 'data'),
 )
 def update_store_surveys(start_date, end_date, timezone, excluded_uuids):
+    return _safe_store_callback(
+        _update_store_surveys_impl,
+        {"data": {}, "length": 0}
+    )(start_date, end_date, timezone, excluded_uuids)
+
+
+def _update_store_trips_impl(start_date, end_date, timezone, excluded_uuids):
     (start_date, end_date) = iso_to_date_only(start_date, end_date)
-    dataframes = query_surveys(start_date, end_date, timezone)
-    records = {}
-    for key, df in dataframes.items():
-        records[key] = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
+    df = query_confirmed_trips(start_date, end_date, timezone)
+    records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
     store = {
         "data": records,
         "length": len(records),
@@ -346,15 +386,10 @@ def update_store_surveys(start_date, end_date, timezone, excluded_uuids):
     Input('store-excluded-uuids', 'data'),
 )
 def update_store_trips(start_date, end_date, timezone, excluded_uuids):
-    (start_date, end_date) = iso_to_date_only(start_date, end_date)
-    df = query_confirmed_trips(start_date, end_date, timezone)
-    records = df_to_filtered_records(df, 'user_id', excluded_uuids["data"])
-    # logging.debug("returning records %s" % records[0:2])
-    store = {
-        "data": records,
-        "length": len(records),
-    }
-    return store
+    return _safe_store_callback(
+        _update_store_trips_impl,
+        {"data": [], "length": 0}
+    )(start_date, end_date, timezone, excluded_uuids)
 
 
 @app.callback(
